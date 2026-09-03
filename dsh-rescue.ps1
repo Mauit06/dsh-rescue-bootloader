@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   DSH Rescue Bootloader — like Windows Safe Mode / Magisk rescue module.
@@ -119,29 +119,35 @@ function Exit-SafeMode {
   Remove-Item $StateFile -ErrorAction SilentlyContinue
 }
 
+function Resolve-BinJs {
+  $candidates = @()
+  if ($env:APPDATA) { $candidates += (Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh\lib\bin.js') }
+  if ($env:USERPROFILE) { $candidates += (Join-Path $env:USERPROFILE 'AppData\Roaming\npm\node_modules\@deepseek-ai\dsh\lib\bin.js') }
+  if ($ProfileDir) {
+    $candidates += (Join-Path $ProfileDir 'node_modules\@deepseek-ai\dsh\lib\bin.js')
+    $candidates += (Join-Path $ProfileDir 'node_modules\@deepseek-ai\dsh-web-app\lib\bin.js')
+  }
+  foreach ($c in $candidates) {
+    if ($c -and (Test-Path -LiteralPath $c)) { return $c }
+  }
+  return $null
+}
+
 function Start-DshWeb {
   Write-Log "Starting dsh web (port $DshPort)..."
-  # 直接用 node 运行 bin.js，不经过 dsh.cmd（避免 dsh.cmd 转发到 rescue 造成递归）
-  $binJs = Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh\lib\bin.js'
-  if (-not (Test-Path $binJs)) {
-    # 回退：通过 dsh.cmd 查找
-    $dshCmd = Join-Path $env:APPDATA 'npm\dsh.cmd'
-    if (Test-Path $dshCmd) {
-      $binJs = Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh\lib\bin.js'
-    }
+  $binJs = Resolve-BinJs
+  if (-not $binJs -or -not (Test-Path -LiteralPath $binJs)) {
+    Write-Log "ERROR: dsh bin.js not found. Is dsh installed globally?"
+    throw "dsh bin.js not found"
   }
   $nodeExe = (Get-Command node -ErrorAction SilentlyContinue).Source
   if (-not $nodeExe) { $nodeExe = 'node' }
-  try {
-    $proc = Start-Process -FilePath $nodeExe `
-      -ArgumentList "`"$binJs`"", 'web' `
-      -WorkingDirectory $ProfileDir `
-      -RedirectStandardOutput $BootLogFile `
-      -RedirectStandardError  "$BootLogFile.err" `
-      -PassThru -WindowStyle Hidden
-  } catch {
-    throw
-  }
+  $proc = Start-Process -FilePath $nodeExe `
+    -ArgumentList $binJs, 'web' `
+    -WorkingDirectory $ProfileDir `
+    -RedirectStandardOutput $BootLogFile `
+    -RedirectStandardError "$BootLogFile.err" `
+    -PassThru -WindowStyle Hidden
   return $proc
 }
 

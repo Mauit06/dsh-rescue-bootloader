@@ -21,6 +21,8 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "!**/__pycache__",
+    "!**/*.pyc",
     "lib",
     "scripts",
     "cordis.patch.yml",

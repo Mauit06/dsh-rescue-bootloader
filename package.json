@@ -1,6 +1,6 @@
 {
   "name": "dsh-rescue-bootloader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DSH 救砖模块 — 崩溃检测、两级安全模式、救砖管理台一体化插件。类似 Windows 安全模式 / Magisk 救砖。",
   "type": "module",
   "main": "lib/index.js",

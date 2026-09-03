@@ -8,7 +8,7 @@
     "node": ">=20.11.0"
   },
   "scripts": {
-    "postinstall": "node scripts/setup.js"
+    "postinstall": "python scripts/setup.py"
   },
   "dsh": {
     "bundle": {
@@ -24,11 +24,11 @@
     "lib",
     "scripts",
     "cordis.patch.yml",
-    "dsh-rescue.ps1",
-    "rescue-server.mjs",
+    "dsh_rescue.py",
+    "rescue_server.py",
     "rescue-ui.html",
-    "install.ps1",
-    "uninstall.ps1",
+    "install.py",
+    "uninstall.py",
     "LICENSE",
     "README.md",
     "CHANGELOG.md"

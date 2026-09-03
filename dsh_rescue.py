@@ -1,0 +1,390 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""DSH 救砖模块 - Python 启动器（替代 dsh-rescue.ps1）
+
+职责：
+  - 启动 DSH (node .../dsh/lib/bin.js web) 并监控启动
+  - 崩溃检测 -> 两级安全模式（第1次保留白名单，第2次连白名单也禁用）
+  - 记录 DSH 主体版本到 state.json
+  - 崩溃时启动/重启救砖管理台 (rescue_server.py)
+纯标准库，无三方依赖。
+"""
+import argparse
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+# ---------- 路径 ----------
+PLUGIN_DIR = Path(__file__).resolve().parent
+DATA_DIR = PLUGIN_DIR / 'data'
+PROFILE_DIR = Path.home() / '.dsh' / 'profiles' / 'web'
+PKG_JSON = PROFILE_DIR / 'package.json'
+BACKUP = PROFILE_DIR / 'package.json.rescue-backup'
+STATE_FILE = DATA_DIR / 'state.json'
+CRASH_FLAG = DATA_DIR / '.crash-flag'
+WHITELIST_FILE = DATA_DIR / 'whitelist.json'
+CRASH_LOG_DIR = DATA_DIR / 'crash-logs'
+BOOT_LOG = DATA_DIR / 'last-boot.log'
+BOOT_LOG_ERR = DATA_DIR / 'last-boot.log.err'
+PID_FILE = DATA_DIR / 'dsh.pid'
+RESCUE_SERVER = PLUGIN_DIR / 'rescue_server.py'
+
+DEFAULT_DSH_PORT = 3080
+DEFAULT_RESCUE_PORT = 8105
+OFFICIAL_PREFIX = '@deepseek-ai/'
+
+
+def log(msg: str) -> None:
+    print(f'[{time.strftime("%H:%M:%S")}] [rescue] {msg}', flush=True)
+
+
+def is_official(name: str) -> bool:
+    return name.startswith(OFFICIAL_PREFIX)
+
+
+def read_json(path: Path):
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding='utf-8'))
+    except Exception:
+        return None
+
+
+def write_json(path: Path, obj) -> None:
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def get_dsh_version() -> str:
+    pkg = read_json(PKG_JSON)
+    if pkg:
+        deps = pkg.get('dependencies', {}) or {}
+        for k in ('@deepseek-ai/dsh-web-app', '@deepseek-ai/dsh', '@deepseek-ai/dsh-base'):
+            if deps.get(k):
+                return str(deps[k])
+    return 'unknown'
+
+
+def get_state() -> dict:
+    st = read_json(STATE_FILE)
+    if st is None:
+        return {'safeMode': False, 'crashCount': 0, 'dshVersion': 'unknown'}
+    return {
+        'safeMode': bool(st.get('safeMode')),
+        'crashCount': int(st.get('crashCount') or 0),
+        'dshVersion': str(st.get('dshVersion') or 'unknown'),
+    }
+
+
+def write_state(state: dict) -> None:
+    write_json(STATE_FILE, state)
+
+
+def reset_crash_state() -> None:
+    CRASH_FLAG.unlink(missing_ok=True)
+    if STATE_FILE.exists():
+        STATE_FILE.unlink()
+    log('崩溃状态已复位（清除安全模式）')
+
+
+def get_whitelist() -> list:
+    wl = read_json(WHITELIST_FILE)
+    if isinstance(wl, list):
+        return wl
+    if isinstance(wl, str):
+        return [wl]
+    return []
+
+
+def get_bin_js():
+    cands = []
+    if os.environ.get('APPDATA'):
+        cands.append(Path(os.environ['APPDATA']) / 'npm' / 'node_modules' / '@deepseek-ai' / 'dsh' / 'lib' / 'bin.js')
+    if os.environ.get('USERPROFILE'):
+        cands.append(Path(os.environ['USERPROFILE']) / 'AppData' / 'Roaming' / 'npm' / 'node_modules' / '@deepseek-ai' / 'dsh' / 'lib' / 'bin.js')
+    cands.append(PROFILE_DIR / 'node_modules' / '@deepseek-ai' / 'dsh' / 'lib' / 'bin.js')
+    cands.append(PROFILE_DIR / 'node_modules' / '@deepseek-ai' / 'dsh-web-app' / 'lib' / 'bin.js')
+    for c in cands:
+        if c and c.exists():
+            return c
+    return cands[0] if cands else None
+
+
+def is_port_open(port: int, host='127.0.0.1', timeout=1.5) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def get_node() -> str:
+    node = shutil.which('node')
+    if not node:
+        raise RuntimeError('找不到 node，请确认已安装 Node.js')
+    return node
+
+
+def launch_dsh() -> subprocess.Popen:
+    bin_js = get_bin_js()
+    if not bin_js:
+        raise RuntimeError('找不到 DSH bin.js，请确认 dsh 已全局安装')
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    log(f'启动 DSH: {bin_js} web')
+    stdout = open(BOOT_LOG, 'wb')
+    stderr = open(BOOT_LOG_ERR, 'wb')
+    proc = subprocess.Popen(
+        [get_node(), str(bin_js), 'web'],
+        cwd=str(PROFILE_DIR), stdout=stdout, stderr=stderr,
+    )
+    PID_FILE.write_text(str(proc.pid), encoding='utf-8')
+    return proc
+
+
+def start_rescue_server() -> subprocess.Popen:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    log(f'启动救砖管理台 http://127.0.0.1:{DEFAULT_RESCUE_PORT}')
+    return subprocess.Popen(
+        [sys.executable, str(RESCUE_SERVER), str(DEFAULT_RESCUE_PORT), str(PROFILE_DIR), str(DATA_DIR)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        cwd=str(PLUGIN_DIR),
+    )
+
+
+def wait_for_startup(proc, timeout) -> dict:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if proc.poll() is not None:
+            return {'ok': False, 'reason': f'进程退出 (code={proc.returncode})'}
+        if is_port_open(DEFAULT_DSH_PORT):
+            return {'ok': True, 'reason': f'port {DEFAULT_DSH_PORT} 响应'}
+        time.sleep(0.5)
+    return {'ok': False, 'reason': f'超时 ({timeout} 秒)'}
+
+
+def save_crash_log(reason: str) -> None:
+    CRASH_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime('%Y%m%d-%H%M%S')
+    log_file = CRASH_LOG_DIR / f'crash-{ts}.log'
+    parts = ['=== DSH Crash Log ===', f'Time: {time.strftime("%Y-%m-%d %H:%M:%S")}', f'Reason: {reason}', '']
+    for buf in (BOOT_LOG, BOOT_LOG_ERR):
+        if buf.exists():
+            parts.append(f'--- {buf.name} ---')
+            parts.append(buf.read_text(encoding='utf-8', errors='replace'))
+    try:
+        log_file.write_text('\n'.join(parts), encoding='utf-8')
+        (CRASH_LOG_DIR / 'latest.log').write_text('\n'.join(parts), encoding='utf-8')
+    except Exception:
+        pass
+    log(f'崩溃日志已保存: {log_file}')
+
+
+def enter_safe_mode(level: int, increment_crash: bool) -> None:
+    log(f'========== 进入安全模式 (level {level}) ==========')
+    if PKG_JSON.exists():
+        BACKUP.write_bytes(PKG_JSON.read_bytes())
+        log('已备份 package.json -> package.json.rescue-backup')
+    pkg = read_json(PKG_JSON)
+    if pkg is None:
+        log('ERROR: 无法读取 profile package.json')
+        return
+    dsh = pkg.setdefault('dsh', {})
+    prof = dsh.setdefault('profile', {})
+    bundles = prof.get('bundles', [])
+    official = [b for b in bundles if is_official(b)]
+    whitelist = get_whitelist()
+
+    st = get_state()
+    crash_count = st['crashCount']
+    if increment_crash:
+        crash_count += 1
+
+    if level >= 2:
+        keep = official
+        whitelist_kept = []
+    else:
+        keep = official + [w for w in whitelist if w not in official]
+        whitelist_kept = [w for w in whitelist if w not in official]
+    disabled = [b for b in bundles if b not in keep]
+
+    prof['bundles'] = keep
+    write_json(PKG_JSON, pkg)
+
+    dsh_ver = get_dsh_version()
+    log(f'保留官方 ({len(official)}): {", ".join(official)}')
+    if whitelist_kept:
+        log(f'保留白名单 ({len(whitelist_kept)}): {", ".join(whitelist_kept)}')
+    log(f'禁用 ({len(disabled)}): {", ".join(disabled)}')
+    log(f'第 #{crash_count} 次崩溃 (level {level}) - DSH version: {dsh_ver}')
+
+    write_state({
+        'safeMode': True,
+        'crashCount': crash_count,
+        'dshVersion': dsh_ver,
+        'allBundles': bundles,
+        'official': official,
+        'whitelist': whitelist,
+        'disabled': disabled,
+        'port': DEFAULT_RESCUE_PORT,
+    })
+    CRASH_FLAG.write_text('1', encoding='utf-8')
+
+
+def enter_safe_mode_for_crash() -> None:
+    st = get_state()
+    level = 2 if st['crashCount'] >= 1 else 1
+    enter_safe_mode(level, increment_crash=True)
+
+
+def kill_dsh(proc) -> None:
+    if proc is not None and proc.poll() is None:
+        try:
+            proc.terminate()
+            time.sleep(1)
+            if proc.poll() is None:
+                proc.kill()
+        except Exception:
+            pass
+    if PID_FILE.exists():
+        try:
+            pid = int(PID_FILE.read_text(encoding='utf-8').strip())
+            subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
+        except Exception:
+            pass
+        PID_FILE.unlink(missing_ok=True)
+
+
+# --- 简易两级流程 ---
+def do_normal_boot():
+    proc = launch_dsh()
+    result = wait_for_startup(proc, ARGS.timeout)
+    if result['ok']:
+        # 稳定性检查（5 秒）
+        stab_deadline = time.time() + 5
+        crashed = False
+        while time.time() < stab_deadline:
+            if proc.poll() is not None:
+                crashed = True
+                break
+            time.sleep(0.5)
+        if crashed:
+            log(f'DSH 启动后不久崩溃 (code={proc.returncode})')
+            save_crash_log(f'process exited shortly after port responded (code={proc.returncode})')
+            time.sleep(2)
+            enter_safe_mode_for_crash()
+            start_rescue_server()
+            proc = launch_dsh()
+            r2 = wait_for_startup(proc, 20)
+            if not r2['ok']:
+                log('安全模式启动失败，升级到仅官方...')
+                kill_dsh(proc)
+                time.sleep(2)
+                enter_safe_mode(2, increment_crash=True)
+                start_rescue_server()
+                proc = launch_dsh()
+                r3 = wait_for_startup(proc, 20)
+                if r3['ok']:
+                    log('严格安全模式启动成功（仅官方）')
+                else:
+                    log('严格安全模式也失败，核心可能损坏')
+            else:
+                log('安全模式启动成功（官方+白名单）')
+            proc.wait()
+            return
+        log(f'DSH 启动成功且稳定: {result["reason"]}')
+        reset_crash_state()
+        log(f'DSH Web: http://127.0.0.1:{DEFAULT_DSH_PORT}')
+        log(f'救砖管理台: http://127.0.0.1:{DEFAULT_RESCUE_PORT}')
+        proc.wait()
+    else:
+        log(f'DSH 启动失败: {result["reason"]}')
+        save_crash_log(result['reason'])
+        if proc.poll() is None:
+            kill_dsh(proc)
+        time.sleep(2)
+        enter_safe_mode_for_crash()
+        start_rescue_server()
+        proc = launch_dsh()
+        r2 = wait_for_startup(proc, 20)
+        if r2['ok']:
+            log('安全模式启动成功（官方+白名单）')
+        else:
+            log('安全模式启动失败，升级到仅官方...')
+            kill_dsh(proc)
+            time.sleep(2)
+            enter_safe_mode(2, increment_crash=True)
+            start_rescue_server()
+            proc = launch_dsh()
+            r3 = wait_for_startup(proc, 20)
+            if r3['ok']:
+                log('严格安全模式启动成功（仅官方）')
+            else:
+                log('严格安全模式也失败，核心可能损坏')
+        proc.wait()
+
+
+def do_safe_boot():
+    st = get_state()
+    level = 2 if st['crashCount'] >= 1 else 1
+    enter_safe_mode(level, increment_crash=False)
+    start_rescue_server()
+    proc = launch_dsh()
+    r2 = wait_for_startup(proc, 20)
+    if r2['ok']:
+        log('安全模式已启动（仅官方/白名单）')
+    else:
+        log(f'安全模式启动失败 ({r2["reason"]})，升级到仅官方...')
+        kill_dsh(proc)
+        time.sleep(2)
+        enter_safe_mode(2, increment_crash=True)
+        start_rescue_server()
+        proc = launch_dsh()
+        r3 = wait_for_startup(proc, 20)
+        if r3['ok']:
+            log('严格安全模式启动成功（仅官方）')
+        else:
+            log('严格安全模式也失败，核心可能损坏')
+    proc.wait()
+
+
+ARGS = None
+
+
+def main():
+    global ARGS, PROFILE_DIR, DEFAULT_DSH_PORT, DEFAULT_RESCUE_PORT, PKG_JSON, BACKUP
+    p = argparse.ArgumentParser(description='DSH 救砖启动器 (Python)')
+    p.add_argument('--safe', action='store_true', help='强制进入安全模式')
+    p.add_argument('--timeout', type=int, default=30, help='启动超时(秒)')
+    p.add_argument('--dsh-port', type=int, default=DEFAULT_DSH_PORT, help='DSH 端口')
+    p.add_argument('--rescue-port', type=int, default=DEFAULT_RESCUE_PORT, help='救砖管理台端口')
+    p.add_argument('--profile', default=str(PROFILE_DIR), help='profile 目录')
+    ARGS = p.parse_args()
+
+    PROFILE_DIR = Path(ARGS.profile)
+    DEFAULT_DSH_PORT = ARGS.dsh_port
+    DEFAULT_RESCUE_PORT = ARGS.rescue_port
+
+    PKG_JSON = PROFILE_DIR / 'package.json'
+    BACKUP = PROFILE_DIR / 'package.json.rescue-backup'
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    log('DSH Rescue Bootloader v1.2 (Python)')
+    log(f'Profile: {PROFILE_DIR}')
+    log(f'DSH 版本: {get_dsh_version()}')
+
+    force_safe = ARGS.safe or CRASH_FLAG.exists()
+    if force_safe:
+        log('崩溃标记/--safe 存在，进入安全模式')
+        do_safe_boot()
+    else:
+        log('正常启动，进行监控...')
+        do_normal_boot()
+
+
+if __name__ == '__main__':
+    main()

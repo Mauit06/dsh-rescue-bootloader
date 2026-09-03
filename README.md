@@ -22,7 +22,7 @@
 ## 工作原理
 
 1. 运行 `dsh web`（已被本插件拦截）
-2. 启动器（`dsh-rescue.ps1`）启动 DSH 并监控启动过程，同时记录 DSH 主体版本
+2. 启动器（`dsh_rescue.py`）启动 DSH 并监控启动过程，同时记录 DSH 主体版本
 3. DSH 崩溃 → 第 1 次进入安全模式（保留官方 + 白名单），打开救砖管理台
 4. 若安全模式下仍崩溃 → 第 2 次升级为仅保留官方（连白名单也禁用）
 5. 在管理台中逐个重新启用插件 → 应用并重启；成功后自动复位崩溃计数
@@ -35,7 +35,7 @@
 dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader
 ```
 
-> 该插件带 `postinstall` 构建脚本，pnpm 10+ 首次安装时会默认阻止运行，需要授权。
+> 该插件带 `postinstall`（`python scripts/setup.py`）构建脚本，pnpm 10+ 首次安装时会默认阻止运行，需要授权。
 > **必须在 profile 的 `pnpm-workspace.yaml` 中授权**（新版 pnpm 已不再读取 `package.json` 里的 `pnpm` 字段）：
 >
 > ```yaml
@@ -91,7 +91,7 @@ dsh plugin --profile web add file:./dsh-rescue-bootloader-1.0.0.tgz
 
 ## ⚠️ 注意事项 / 已知限制
 
-- **仅 Windows**：拦截依赖 `dsh.cmd` / `dsh.ps1`（`%APPDATA%\npm`）。
+- **Python 版**：启动器/管理台/安装脚本均为 Python（纯标准库，零依赖）；拦截依赖 `dsh.cmd`/`dsh.ps1`（Windows）。
 - **仅拦截 `dsh web`**：如果改用 `dsh --profile web` 启动，则绕过本插件的崩溃检测。
 - **需在前台控制台启动**：崩溃检测通过“包装启动 + 前台等待”实现，`dsh web` 窗口关闭时 DSH 也会退出。
 - **安全模式只保留 `@deepseek-ai/*`**：若崩溃元凶本身是某个 `@deepseek-ai/*` 插件，安全模式不会禁用它（可能仍需手动移除）。
@@ -128,12 +128,12 @@ dsh-rescue-bootloader/
 ├── lib/
 │   └── index.js          # 插件入口 — 自动启动救援服务器
 ├── scripts/
-│   └── setup.js          # 安装后自动配置 dsh.cmd/dsh.ps1 拦截
-├── dsh-rescue.ps1        # 启动器 — 崩溃检测与安全模式
-├── rescue-server.mjs     # 救砖管理台后端（HTTP API）
+│   └── setup.py          # 安装后自动配置 dsh.cmd/dsh.ps1 拦截
+├── dsh_rescue.py         # 启动器 — 崩溃检测与两级安全模式（Python）
+├── rescue_server.py      # 救砖管理台后端（HTTP API，Python）
 ├── rescue-ui.html        # 救砖管理台前端
-├── install.ps1           # 手动安装脚本
-├── uninstall.ps1         # 卸载脚本
+├── install.py            # 手动安装脚本
+├── uninstall.py          # 卸载脚本
 ├── CHANGELOG.md          # 变更日志
 ├── LICENSE               # MIT 协议
 └── data/                 # 运行时数据（自动创建，已 gitignore）

@@ -19,6 +19,16 @@ function isOfficial(name) {
   return name.startsWith('@deepseek-ai/');
 }
 
+function getDshVersion() {
+  try {
+    const pkg = readJson(PKG_JSON);
+    return pkg.dependencies?.['@deepseek-ai/dsh-web-app']
+      || pkg.dependencies?.['@deepseek-ai/dsh']
+      || pkg.dependencies?.['@deepseek-ai/dsh-base']
+      || 'unknown';
+  } catch { return 'unknown'; }
+}
+
 function readJson(file) {
   let txt = fs.readFileSync(file, 'utf8');
   if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1); // strip BOM
@@ -95,9 +105,17 @@ function getCurrentState() {
 
   const enabledThirdParty = currentBundles.filter(b => !isOfficial(b));
   const currentDisabled = allBundles.filter(b => !currentBundles.includes(b));
+  // crashCount from state.json (extra safety across the state read above)
+  let crashCount = 0;
+  let storedVersion = '';
+  try {
+    if (fs.existsSync(STATE_FILE)) { const st = readJson(STATE_FILE); crashCount = Number(st.crashCount) || 0; storedVersion = st.dshVersion || ''; }
+  } catch {}
 
   return {
     safeMode,
+    crashCount,
+    dshVersion: storedVersion || getDshVersion(),
     allBundles,
     official,
     whitelist,
@@ -156,8 +174,9 @@ const server = http.createServer(async (req, res) => {
       const pkg = readJson(PKG_JSON);
       pkg.dsh.profile.bundles = newBundles;
       writeJson(PKG_JSON, pkg);
-      // 清除崩溃标记，使重启后走正常启动流程
+      // 清除崩溃标记，使重启后走正常启动流程；重置崩溃计数
       fs.rmSync(CRASH_FLAG, { force: true });
+      fs.rmSync(STATE_FILE, { force: true });
       res.writeHead(200);
       res.end(JSON.stringify({ ok: true, message: `已启用 ${toEnable.length} 个插件（官方+白名单保留），正在重启 DSH...` }));
       restartDsh();

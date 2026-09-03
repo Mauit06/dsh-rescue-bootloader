@@ -132,6 +132,7 @@ async function loadState() {
     state.enabledThirdParty.forEach(b => pendingStatus.set(b, 'enabled'));
     state.disabled.forEach(b => pendingStatus.set(b, 'disabled'));
     render();
+    renderSubtitle();
   } catch (e) {
     showMsg('无法连接服务器: ' + e.message, 'err');
   }
@@ -213,6 +214,19 @@ function render() {
       <input type="checkbox" class="select-cb" value="${b}">
     </div>`;
   }).join('');
+}
+
+function renderSubtitle() {
+  const sub = document.getElementById('subtitle');
+  const ver = state.dshVersion || 'unknown';
+  const cnt = Number(state.crashCount) || 0;
+  if (state.safeMode) {
+    sub.textContent = cnt >= 2
+      ? `安全模式已激活（第 ${cnt} 次崩溃，DSH ${ver}）— 已升级：连白名单也被禁用，只运行官方核心插件。请逐个恢复第三方插件定位问题。`
+      : `安全模式已激活（第 ${cnt} 次崩溃，DSH ${ver}）— 当前只运行官方核心插件 + 白名单插件，其余已禁用。请选择性重新启用。`;
+  } else {
+    sub.textContent = `DSH 运行正常（DSH ${ver}，历史崩溃 ${cnt} 次）。此管理台用于崩溃后选择性恢复插件。`;
+  }
 }
 
 function toggleAll() {

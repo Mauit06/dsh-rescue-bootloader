@@ -1,9 +1,12 @@
 {
   "name": "dsh-rescue-bootloader",
   "version": "1.0.0",
-  "description": "DSH 救砖模块 — 崩溃检测、安全模式、救砖管理台一体化插件。类似 Windows 安全模式 / Magisk 救砖。",
+  "description": "DSH 救砖模块 — 崩溃检测、两级安全模式、救砖管理台一体化插件。类似 Windows 安全模式 / Magisk 救砖。",
   "type": "module",
   "main": "lib/index.js",
+  "engines": {
+    "node": ">=20.11.0"
+  },
   "scripts": {
     "postinstall": "node scripts/setup.js"
   },
@@ -31,11 +34,24 @@
     "CHANGELOG.md"
   ],
   "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
     "dsh",
+    "cordis",
+    "plugin",
     "rescue",
     "safe-mode",
     "bootloader",
-    "recovery"
+    "recovery",
+    "crash-detection"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mauit06/dsh-rescue-bootloader.git"
+  },
+  "homepage": "https://github.com/Mauit06/dsh-rescue-bootloader#readme",
+  "bugs": {
+    "url": "https://github.com/Mauit06/dsh-rescue-bootloader/issues"
+  },
   "license": "MIT"
 }

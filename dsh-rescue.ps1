@@ -75,15 +75,52 @@ function Get-Whitelist {
   return @()
 }
 
+function Get-DshVersion {
+  try {
+    $json = Get-Content $PkgJson -Raw -Encoding UTF8 | ConvertFrom-Json
+    $v = $json.dependencies.'@deepseek-ai/dsh-web-app'
+    if (-not $v) { $v = $json.dependencies.'@deepseek-ai/dsh' }
+    if ($v) { return $v }
+  } catch {}
+  return 'unknown'
+}
+
+function Get-State {
+  if (Test-Path $StateFile) {
+    try {
+      $tmp = Get-Content $StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+      return @{ safeMode = [bool]$tmp.safeMode; crashCount = [int]$tmp.crashCount; dshVersion = [string]$tmp.dshVersion }
+    } catch {}
+  }
+  return @{ safeMode = $false; crashCount = 0; dshVersion = 'unknown' }
+}
+
+function Reset-CrashState {
+  Remove-Item $CrashFlag -ErrorAction SilentlyContinue
+  Remove-Item $StateFile -ErrorAction SilentlyContinue
+  Write-Log "Crash state reset (safe mode cleared)"
+}
+
 function Enter-SafeMode {
-  Write-Log "========== ENTERING SAFE MODE =========="
+  param([int]$Level = 1, [switch]$IncrementCrash)
+  Write-Log "========== ENTERING SAFE MODE (level $Level) =========="
   Backup-PackageJson
   $json = Get-Content $PkgJson -Raw -Encoding UTF8 | ConvertFrom-Json
   $allBundles = @($json.dsh.profile.bundles)
   $official = Get-OfficialBundles $allBundles
   $whitelist = Get-Whitelist
-  # Keep official + whitelisted; disable the rest
-  $keep = @($official + $whitelist | Select-Object -Unique)
+  $st = Get-State
+  $crashCount = [int]$st.crashCount
+  if ($IncrementCrash) { $crashCount++ }
+
+  # level 1: keep official + whitelist ; level >=2: keep official only (disable whitelist too)
+  if ($Level -ge 2) {
+    $keep = @($official | Select-Object -Unique)
+    $whitelistKept = @()
+  } else {
+    $keep = @($official + $whitelist | Select-Object -Unique)
+    $whitelistKept = @($whitelist)
+  }
   $disabled = @($allBundles | Where-Object { $keep -notcontains $_ })
 
   $json.dsh.profile.bundles = $keep
@@ -91,14 +128,16 @@ function Enter-SafeMode {
   $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($PkgJson, $jsonText, $utf8NoBom)
 
+  $dshVer = (Get-DshVersion)
   Write-Log "Kept official ($($official.Count)): $($official -join ', ')"
-  if ($whitelist.Count -gt 0) {
-    Write-Log "Kept whitelisted ($($whitelist.Count)): $($whitelist -join ', ')"
-  }
+  if ($whitelistKept.Count -gt 0) { Write-Log "Kept whitelisted ($($whitelistKept.Count)): $($whitelistKept -join ', ')" }
   Write-Log "Disabled ($($disabled.Count)): $($disabled -join ', ')"
+  Write-Log "Crash #$crashCount (level $Level) - DSH version: $dshVer"
 
   $state = @{
     safeMode   = $true
+    crashCount = $crashCount
+    dshVersion = $dshVer
     allBundles = @($allBundles)
     official   = @($official)
     whitelist  = @($whitelist)
@@ -108,6 +147,12 @@ function Enter-SafeMode {
   $stateText = $state | ConvertTo-Json -Depth 5
   [System.IO.File]::WriteAllText($StateFile, $stateText, $utf8NoBom)
   [System.IO.File]::WriteAllText($CrashFlag, '1', $utf8NoBom)
+}
+
+function Enter-SafeModeForCrash {
+  $st = Get-State
+  $lvl = if ([int]$st.crashCount -ge 1) { 2 } else { 1 }
+  Enter-SafeMode -Level $lvl -IncrementCrash
 }
 
 function Exit-SafeMode {
@@ -200,7 +245,7 @@ function Wait-ForStartup($proc, $timeoutSec) {
 }
 
 # ============ Main ============
-Write-Log "DSH Rescue Bootloader v1.0"
+Write-Log "DSH Rescue Bootloader v1.1"
 Write-Log "Profile: $ProfileDir"
 
 if (-not (Test-Path $RescueDir)) {
@@ -214,7 +259,9 @@ if ($forceSafe) {
   } else {
     Write-Log "--Safe specified, entering safe mode"
   }
-  Enter-SafeMode
+  $st = Get-State
+  $lvl = if ([int]$st.crashCount -ge 1) { 2 } else { 1 }
+  Enter-SafeMode -Level $lvl -IncrementCrash:$false
   Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -match '@deepseek-ai' -and $_.CommandLine -notmatch 'rescue-server' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -222,12 +269,29 @@ if ($forceSafe) {
 
   $dsh = Start-DshWeb
   Start-RescueServer
-  Write-Log ""
-  Write-Log "========== SAFE MODE STARTED =========="
-  Write-Log "DSH Web:       http://127.0.0.1:$DshPort"
-  Write-Log "Rescue console: http://127.0.0.1:$RescuePort"
-  Write-Log "Selectively re-enable plugins in the console, then Apply & Restart"
-  Write-Log "======================================"
+  $r2 = Wait-ForStartup $dsh 20
+  if ($r2.ok) {
+    Write-Log ""
+    Write-Log "========== SAFE MODE STARTED =========="
+    Write-Log "DSH Web:       http://127.0.0.1:$DshPort"
+    Write-Log "Rescue console: http://127.0.0.1:$RescuePort"
+    Write-Log "Selectively re-enable plugins in the console, then Apply & Restart"
+    Write-Log "======================================"
+  } else {
+    Write-Log "Safe-mode boot failed ($($r2.reason)); escalating to disable whitelist."
+    Save-CrashLog "safe-mode boot failed ($($r2.reason))"
+    if (-not $dsh.HasExited) { $dsh.Kill() }
+    Start-Sleep -Seconds 2
+    Enter-SafeMode -Level 2 -IncrementCrash
+    Start-RescueServer
+    $dsh = Start-DshWeb
+    $r3 = Wait-ForStartup $dsh 20
+    if ($r3.ok) {
+      Write-Log "Strict safe mode up (official only)."
+    } else {
+      Write-Log "Strict safe mode also failed ($($r3.reason)); core may be broken."
+    }
+  }
   $dsh.WaitForExit()
   return
 }
@@ -238,7 +302,6 @@ $result = Wait-ForStartup $dsh $TimeoutSec
 
 if ($result.ok) {
   Write-Log "DSH port responding, running stability check (5 sec)..."
-  # DSH may open the port before finishing bundle loading; crash can happen right after.
   $stabDeadline = (Get-Date).AddSeconds(5)
   $crashedAfterStart = $false
   while ((Get-Date) -lt $stabDeadline) {
@@ -248,27 +311,28 @@ if ($result.ok) {
   if ($crashedAfterStart) {
     Write-Log "DSH crashed shortly after startup (exit code $($dsh.ExitCode))"
     Save-CrashLog "process exited shortly after port responded (code=$($dsh.ExitCode))"
-    Write-Log "Triggering rescue..."
     Start-Sleep -Seconds 2
-    Enter-SafeMode
-    $dsh = Start-DshWeb
+    Enter-SafeModeForCrash
     Start-RescueServer
-    $result2 = Wait-ForStartup $dsh 20
-    if ($result2.ok) {
-      Write-Log ""
-      Write-Log "========== SAFE MODE OK =========="
-      Write-Log "DSH Web (official+whitelist): http://127.0.0.1:$DshPort"
-      Write-Log "Rescue console:               http://127.0.0.1:$RescuePort"
-      Write-Log "Re-enable plugins one by one to find the culprit"
-      Write-Log "=================================="
+    $dsh = Start-DshWeb
+    $r2 = Wait-ForStartup $dsh 20
+    if ($r2.ok) {
+      Write-Log "Safe mode up (official+whitelist)."
     } else {
-      Write-Log "Safe mode also failed: $($result2.reason)"
-      Write-Log "Core may be broken; check dsh installation."
+      Write-Log "Safe mode boot failed ($($r2.reason)); escalating."
+      if (-not $dsh.HasExited) { $dsh.Kill() }
+      Start-Sleep -Seconds 2
+      Enter-SafeMode -Level 2 -IncrementCrash
+      Start-RescueServer
+      $dsh = Start-DshWeb
+      $r3 = Wait-ForStartup $dsh 20
+      if ($r3.ok) { Write-Log "Strict safe mode up (official only)." } else { Write-Log "Strict safe mode also failed." }
     }
     $dsh.WaitForExit()
     return
   }
   Write-Log "DSH started OK and stable: $($result.reason)"
+  Reset-CrashState
   Write-Log "DSH Web: http://127.0.0.1:$DshPort"
   Write-Log "Rescue console: http://127.0.0.1:$RescuePort"
   Write-Log "(running in background; closing this window stops DSH)"
@@ -276,26 +340,23 @@ if ($result.ok) {
 } else {
   Write-Log "DSH boot FAILED: $($result.reason)"
   Save-CrashLog $result.reason
-  Write-Log "Triggering rescue..."
   if (-not $dsh.HasExited) { $dsh.Kill() }
   Start-Sleep -Seconds 2
-
-  Enter-SafeMode
-
-  $dsh = Start-DshWeb
+  Enter-SafeModeForCrash
   Start-RescueServer
-
-  $result2 = Wait-ForStartup $dsh 20
-  if ($result2.ok) {
-    Write-Log ""
-    Write-Log "========== SAFE MODE OK =========="
-    Write-Log "DSH Web (official only): http://127.0.0.1:$DshPort"
-    Write-Log "Rescue console:          http://127.0.0.1:$RescuePort"
-    Write-Log "Re-enable plugins one by one to find the culprit"
-    Write-Log "=================================="
+  $dsh = Start-DshWeb
+  $r2 = Wait-ForStartup $dsh 20
+  if ($r2.ok) {
+    Write-Log "Safe mode up (official+whitelist)."
   } else {
-    Write-Log "Safe mode also failed: $($result2.reason)"
-    Write-Log "Core may be broken; check dsh installation."
+    Write-Log "Safe mode boot failed ($($r2.reason)); escalating."
+    if (-not $dsh.HasExited) { $dsh.Kill() }
+    Start-Sleep -Seconds 2
+    Enter-SafeMode -Level 2 -IncrementCrash
+    Start-RescueServer
+    $dsh = Start-DshWeb
+    $r3 = Wait-ForStartup $dsh 20
+    if ($r3.ok) { Write-Log "Strict safe mode up (official only)." } else { Write-Log "Strict safe mode also failed; check dsh installation." }
   }
   $dsh.WaitForExit()
 }

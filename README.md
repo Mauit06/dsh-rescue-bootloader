@@ -3,6 +3,8 @@
 > DSH 救砖模块 — 类似 Windows 安全模式 / Magisk 救砖。
 > 当 DSH 因插件崩溃无法启动时，自动进入安全模式，通过救砖管理台选择性恢复插件。
 
+**v1.0.0** · MIT · Windows
+
 ---
 
 ## 功能特性
@@ -32,18 +34,19 @@
 dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader
 ```
 
-> pnpm 安装后会自动运行 `postinstall` 脚本完成 `dsh.cmd`/`dsh.ps1` 的拦截配置。
-> 由于该插件带 `postinstall` 构建脚本，pnpm 10+ 首次安装时会默认阻止运行，需要授权。
-> **注意：必须在 profile 的 `pnpm-workspace.yaml` 中授权（新版 pnpm 已不再读取 `package.json` 里的 `pnpm` 字段）：**
+> 该插件带 `postinstall` 构建脚本，pnpm 10+ 首次安装时会默认阻止运行，需要授权。
+> **必须在 profile 的 `pnpm-workspace.yaml` 中授权**（新版 pnpm 已不再读取 `package.json` 里的 `pnpm` 字段）：
+>
 > ```yaml
 > allowBuilds:
 >   dsh-rescue-bootloader: true
 > ```
+>
 > 授权后重新运行安装：
+>
 > ```powershell
 > dsh plugin --profile web install
 > ```
-> 若使用 ZIP / 本地 tarball 方式（视作已发布产物），`postinstall` 通常直接运行，无需授权。
 
 安装完成后运行：
 
@@ -51,9 +54,18 @@ dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader
 dsh web
 ```
 
-### 方式二：手动安装
+### 方式二：Release 包（无需授权）
 
-1. 下载 [ZIP 包](https://github.com/Mauit06/dsh-rescue-bootloader/releases) 并解压
+1. 从 [Releases](https://github.com/Mauit06/dsh-rescue-bootloader/releases) 下载 `dsh-rescue-bootloader-1.0.0.tgz`
+2. 用本地 tarball 方式安装（视为已发布产物，`postinstall` 默认直接运行，无需 allowBuilds）：
+
+```powershell
+dsh plugin --profile web add file:./dsh-rescue-bootloader-1.0.0.tgz
+```
+
+### 方式三：手动安装（ZIP / 解压）
+
+1. 下载并解压 ZIP / tarball
 2. 在解压目录中打开 PowerShell，运行：
    ```powershell
    .\install.ps1
@@ -72,10 +84,18 @@ dsh web
 
 - ★（星标）— 切换插件白名单（安全模式下始终启用）
 - ☐ 勾选框 — 选择要启用的插件
-- **启用插件** — 启用选中的插件
-- **禁用插件** — 禁用选中的插件
-- **应用选中并重启 DSH** — 应用更改并重启 DSH
+- **启用插件 / 禁用插件** — 仅标记该插件的待应用状态（不立即生效）
+- **应用选中并重启 DSH** — 让所有标记为“启用”的插件生效并重启 DSH
 - **导出 / 清除** — 导出或清除崩溃日志
+
+## ⚠️ 注意事项 / 已知限制
+
+- **仅 Windows**：拦截依赖 `dsh.cmd` / `dsh.ps1`（`%APPDATA%\npm`）。
+- **仅拦截 `dsh web`**：如果改用 `dsh --profile web` 启动，则绕过本插件的崩溃检测。
+- **需在前台控制台启动**：崩溃检测通过“包装启动 + 前台等待”实现，`dsh web` 窗口关闭时 DSH 也会退出。
+- **安全模式只保留 `@deepseek-ai/*`**：若崩溃元凶本身是某个 `@deepseek-ai/*` 插件，安全模式不会禁用它（可能仍需手动移除）。
+- **“应用/重启”会结束所有 DSH 进程**：救砖管理台点“应用/重启”会杀掉命令行含 `bin.js`/DSh 的 node 进程（含当前 DSH 会话），随后重新启动。
+- **修改可逆**：进入安全模式前会备份 `package.json` 到 `package.json.rescue-backup`，可随时用管理台“恢复全部插件”还原。
 
 ## 卸载
 
@@ -113,6 +133,7 @@ dsh-rescue-bootloader/
 ├── rescue-ui.html        # 救砖管理台前端
 ├── install.ps1           # 手动安装脚本
 ├── uninstall.ps1         # 卸载脚本
+├── CHANGELOG.md          # 变更日志
 ├── LICENSE               # MIT 协议
 └── data/                 # 运行时数据（自动创建，已 gitignore）
     ├── .crash-flag       # 崩溃标记

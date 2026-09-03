@@ -68,7 +68,7 @@ function Backup-PackageJson {
 function Get-Whitelist {
   if (Test-Path $WhitelistFile) {
     try {
-      $wl = Get-Content $WhitelistFile -Raw | ConvertFrom-Json
+      $wl = Get-Content $WhitelistFile -Raw -Encoding UTF8 | ConvertFrom-Json
       return @($wl)
     } catch { return @() }
   }
@@ -78,7 +78,7 @@ function Get-Whitelist {
 function Enter-SafeMode {
   Write-Log "========== ENTERING SAFE MODE =========="
   Backup-PackageJson
-  $json = Get-Content $PkgJson -Raw | ConvertFrom-Json
+  $json = Get-Content $PkgJson -Raw -Encoding UTF8 | ConvertFrom-Json
   $allBundles = @($json.dsh.profile.bundles)
   $official = Get-OfficialBundles $allBundles
   $whitelist = Get-Whitelist
@@ -164,12 +164,12 @@ function Save-CrashLog($reason) {
   [void]$sb.AppendLine("")
   if (Test-Path $BootLogFile) {
     [void]$sb.AppendLine("--- stdout ---")
-    [void]$sb.AppendLine((Get-Content $BootLogFile -Raw -ErrorAction SilentlyContinue))
+    [void]$sb.AppendLine((Get-Content $BootLogFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue))
   }
   $errFile = "$BootLogFile.err"
   if (Test-Path $errFile) {
     [void]$sb.AppendLine("--- stderr ---")
-    [void]$sb.AppendLine((Get-Content $errFile -Raw -ErrorAction SilentlyContinue))
+    [void]$sb.AppendLine((Get-Content $errFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue))
   }
   $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
   [System.IO.File]::WriteAllText($logFile, $sb.ToString(), $utf8NoBom)
@@ -215,9 +215,9 @@ if ($forceSafe) {
     Write-Log "--Safe specified, entering safe mode"
   }
   Enter-SafeMode
-  Get-Process -Name node -ErrorAction SilentlyContinue |
-    Where-Object { $_.StartTime -gt (Get-Date).AddHours(-1) } |
-    Stop-Process -Force -ErrorAction SilentlyContinue
+  Get-CimInstance Win32_Process -Filter "Name='node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match '@deepseek-ai' -and $_.CommandLine -notmatch 'rescue-server' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Seconds 2
 
   $dsh = Start-DshWeb

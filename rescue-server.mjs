@@ -109,7 +109,7 @@ function getCurrentState() {
 
 function restartDsh() {
   // Only kill dsh processes (NOT the rescue server itself)
-  const killCmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\\"Name='node.exe'\\\" | Where-Object { $_.CommandLine -match 'dsh' -and $_.CommandLine -notmatch 'rescue-server' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`;
+  const killCmd = `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\\"Name='node.exe'\\\" | Where-Object { $_.CommandLine -match 'bin.js' -and $_.CommandLine -notmatch 'rescue-server' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`;
   exec(killCmd, () => {
     setTimeout(() => {
       // dsh-rescue.ps1 位于插件根目录（与本文件同级）

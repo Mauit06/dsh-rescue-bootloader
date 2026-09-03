@@ -53,7 +53,7 @@ Write-Log "Plugin files copied"
 
 # 2. Register in package.json
 Write-Log "Registering plugin in package.json"
-$pkg = Get-Content $PkgJson -Raw | ConvertFrom-Json
+$pkg = Get-Content $PkgJson -Raw -Encoding UTF8 | ConvertFrom-Json
 if (-not $pkg.dependencies) { $pkg | Add-Member -NotePropertyName dependencies -NotePropertyValue ([pscustomobject]@{}) }
 $pkg.dependencies | Add-Member -NotePropertyName 'dsh-rescue-bootloader' -NotePropertyValue 'file:./node_modules/dsh-rescue-bootloader' -Force
 if (-not ($pkg.dsh.profile.bundles -contains 'dsh-rescue-bootloader')) {

@@ -29,7 +29,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 
 # 1. Unpatch dsh.cmd
 Write-Log "Restoring dsh.cmd"
-$cmdContent = Get-Content $DshCmd -Raw
+$cmdContent = Get-Content $DshCmd -Raw -Encoding UTF8
 # Remove the rescue block (from REM === DSH Rescue to the extra :rundsh)
 $cmdContent = $cmdContent -replace '(?s)\r?\nREM === DSH Rescue: intercept web subcommand ===.*?:rundsh\r?\n', "`r`n:rundsh`r`n"
 [System.IO.File]::WriteAllText($DshCmd, $cmdContent, $utf8)
@@ -37,14 +37,14 @@ Write-Log "dsh.cmd restored"
 
 # 2. Unpatch dsh.ps1
 Write-Log "Restoring dsh.ps1"
-$psContent = Get-Content $DshPs1 -Raw
+$psContent = Get-Content $DshPs1 -Raw -Encoding UTF8
 $psContent = $psContent -replace '(?s)^# === DSH Rescue: intercept web subcommand ===.*?\r?\n\r?\n', ''
 [System.IO.File]::WriteAllText($DshPs1, $psContent, $utf8)
 Write-Log "dsh.ps1 restored"
 
 # 3. Unregister from package.json
 Write-Log "Unregistering from package.json"
-$pkg = Get-Content $PkgJson -Raw | ConvertFrom-Json
+$pkg = Get-Content $PkgJson -Raw -Encoding UTF8 | ConvertFrom-Json
 if ($pkg.dependencies.'dsh-rescue-bootloader') {
   $pkg.dependencies.PSObject.Properties.Remove('dsh-rescue-bootloader')
 }

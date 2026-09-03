@@ -99,12 +99,12 @@ dsh plugin --profile web add file:./dsh-rescue-bootloader-1.0.1.tgz
 
 ## ⚠️ 注意事项 / 已知限制
 
-- **Python 版**：启动器/管理台/安装脚本均为 Python；拦截依赖 `dsh.cmd` / `dsh.ps1`（Windows）。
-- **仅拦截 `dsh web`**：用 `dsh --profile web` 启动则绕过本插件的崩溃检测。
-- **需在 PATH 有 `python`**：若只用 `py`，请在安装/拦截中把 `python` 换成 `py`（或全路径）。
-- **需前台控制台启动**：崩溃检测通过“包装启动 + 前台等待”实现，`dsh web` 窗口关闭时 DSH 也会退出。
-- **安全模式只保留 `@deepseek-ai/*`**：若崩溃元凶本身是某个 `@deepseek-ai/*` 插件，安全模式不会禁用它。
-- **“应用/重启”会结束 DSH 进程**：通过 PID 文件精确清理（不误杀其它 node 应用）。
+- **Python 版**：启动器/管理台/安装脚本均为 Python（纯标准库，跨平台逻辑）；拦截依赖 `dsh.cmd`/`dsh.ps1`（Windows）/ `dsh` shell 包装（非 Windows）。
+- **拦截 `dsh web` 与 `dsh --profile web`**：两者都会进入崩溃检测（不再绕过）。
+- **Python 已内嵌**：安装时把所用 Python 全路径写入 `data/python.path`，启动器用全路径调用，不依赖 `python` 在 PATH；仅需安装时能运行 `python`（只用 `py` 时把 `package.json` 的 `postinstall` 改成 `py -3 scripts/setup.py`）。
+- **DSH 不随终端关闭而退出**：启动器用 `DETACHED_PROCESS` 启动 DSH；加 `--daemon` 则启动器本身也后台守护、全程监控崩溃。
+- **安全模式只保留 `@deepseek-ai/*`**：profile 中仅 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 两个核心会保留，其余第三方一律禁用；若元凶是这两个核心则无法禁用。
+- **“应用/重启”结束 DSH 进程**：通过 PID 文件精确清理，不误杀其它 node 应用。
 - **修改可逆**：进入安全模式前备份 `package.json` 到 `package.json.rescue-backup`，可用管理台“恢复全部插件”还原。
 
 ## 卸载

@@ -138,9 +138,15 @@ def launch_dsh() -> subprocess.Popen:
     log(f'启动 DSH: {bin_js} web')
     stdout = open(BOOT_LOG, 'wb')
     stderr = open(BOOT_LOG_ERR, 'wb')
+    creationflags = 0
+    if os.name == 'nt':
+        creationflags = (getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+                         | getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                         | 0x00000008)  # DETACHED_PROCESS
     proc = subprocess.Popen(
         [get_node(), str(bin_js), 'web'],
         cwd=str(PROFILE_DIR), stdout=stdout, stderr=stderr,
+        creationflags=creationflags,
     )
     PID_FILE.write_text(str(proc.pid), encoding='utf-8')
     return proc
@@ -362,6 +368,7 @@ def main():
     p.add_argument('--timeout', type=int, default=30, help='启动超时(秒)')
     p.add_argument('--dsh-port', type=int, default=DEFAULT_DSH_PORT, help='DSH 端口')
     p.add_argument('--rescue-port', type=int, default=DEFAULT_RESCUE_PORT, help='救砖管理台端口')
+    p.add_argument('--daemon', action='store_true', help='守护模式：启动器也脱离控制台，全程后台运行')
     p.add_argument('--profile', default=str(PROFILE_DIR), help='profile 目录')
     ARGS = p.parse_args()
 
@@ -377,7 +384,35 @@ def main():
     log(f'Profile: {PROFILE_DIR}')
     log(f'DSH 版本: {get_dsh_version()}')
 
+
+    # 守护模式：重新以脱离控制台的方式启动自己，然后退出（DSH 与监控都后台运行）
+    if ARGS.daemon and not os.environ.get('DSH_RESCUE_DAEMON'):
+        log('切换到守护模式（脱离控制台）...')
+        env = dict(os.environ)
+        env['DSH_RESCUE_DAEMON'] = '1'
+        flags = 0
+        if os.name == 'nt':
+            flags = (getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+                     | getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+                     | 0x00000008)
+        args = ['--daemon', '--dsh-port', str(DEFAULT_DSH_PORT), '--rescue-port', str(DEFAULT_RESCUE_PORT),
+                '--profile', str(PROFILE_DIR), '--timeout', str(ARGS.timeout)]
+        if ARGS.safe:
+            args.append('--safe')
+        try:
+            subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve())] + args,
+                cwd=str(PLUGIN_DIR), env=env,
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=flags,
+            )
+        except Exception as e:
+            log(f'守护启动失败: {e}')
+        log(f'已在后台启动 DSH：http://127.0.0.1:{DEFAULT_DSH_PORT}（救砖管理台 http://127.0.0.1:{DEFAULT_RESCUE_PORT}）')
+        return
+
     force_safe = ARGS.safe or CRASH_FLAG.exists()
+
     if force_safe:
         log('崩溃标记/--safe 存在，进入安全模式')
         do_safe_boot()

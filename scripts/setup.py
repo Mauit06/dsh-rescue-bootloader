@@ -34,7 +34,7 @@ def patch_dsh_cmd(dsh_cmd, rescue):
         log('找不到 :rundsh 标签，跳过'); return False
     patch = (
         '\r\nREM === DSH Rescue: intercept web subcommand ===\r\n'
-        'if /I not "%~1"=="web" goto rundsh\r\n'
+        'if not "%~1"=="web" if not "%~2"=="web" goto rundsh\r\n'
         f'if not EXIST "{rescue}" goto rundsh\r\n'
         'endLocal\r\n'
         f'"{PYTHON}" "{rescue}"\r\n'
@@ -55,7 +55,7 @@ def patch_dsh_ps1(dsh_ps1, rescue):
         log('dsh.ps1 已打过补丁'); return True
     block = (
         '\n# === DSH Rescue: intercept web subcommand ===\n'
-        'if ($args.Count -gt 0 -and $args[0] -eq \'web\') {\n'
+        'if ($args -contains \'web\') {\n'
         f'  $rescuePs = \'{rescue}\'\n'
         '  if (Test-Path $rescuePs) {\n'
         f'    & \'{PYTHON}\' $rescuePs\n'

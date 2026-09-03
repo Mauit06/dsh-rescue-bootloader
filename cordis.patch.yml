@@ -1,0 +1,4 @@
+# dsh-rescue-bootloader bundle patch
+- insert:
+    - id: rescue-bootloader
+      name: dsh-rescue-bootloader

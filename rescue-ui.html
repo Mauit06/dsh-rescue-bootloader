@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSH 救砖管理台</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px;
+  }
+  .container { max-width: 780px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; color: #f87171; }
+  .subtitle { color: #94a3b8; font-size: 13px; margin-bottom: 20px; }
+  .card {
+    background: #1e293b; border: 1px solid #334155; border-radius: 10px;
+    padding: 18px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 15px; margin-bottom: 12px; color: #f1f5f9; display: flex; align-items: center; gap: 8px; }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; white-space: nowrap;
+  }
+  .badge.whitelist { background: #78350f; color: #fde68a; }
+  .badge.enabled { background: #166534; color: #bbf7d0; }
+  .badge.disabled { background: #7f1d1d; color: #fecaca; }
+  .badge.crash { background: #7f1d1d; color: #fecaca; }
+  .plugin-row {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border-radius: 6px; margin-bottom: 4px; transition: background .15s;
+  }
+  .plugin-row:hover { background: #273449; }
+  .plugin-row input[type=checkbox] {
+    width: 18px; height: 18px; accent-color: #f87171; cursor: pointer; flex-shrink: 0;
+  }
+  .plugin-name { flex: 1; font-size: 13px; font-family: "Consolas", monospace; word-break: break-all; }
+  .star-btn {
+    background: none; border: none; cursor: pointer; font-size: 18px; padding: 2px 6px;
+    line-height: 1; border-radius: 4px; transition: background .15s;
+  }
+  .star-btn:hover { background: #334155; }
+  .star-btn.active { color: #fbbf24; }
+  .star-btn:not(.active) { color: #475569; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; justify-content: flex-end; }
+  button {
+    padding: 10px 18px; border: none; border-radius: 6px; font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: opacity .15s, transform .05s;
+  }
+  button:active { transform: scale(.97); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: #f87171; color: #fff; }
+  .btn-secondary { background: #334155; color: #e2e8f0; }
+  .btn-success { background: #16a34a; color: #fff; }
+  .btn-warning { background: #d97706; color: #fff; }
+  .msg {
+    margin-top: 14px; padding: 10px 14px; border-radius: 6px; font-size: 13px;
+    display: none;
+  }
+  .msg.show { display: block; }
+  .msg.ok { background: #14532d; color: #bbf7d0; }
+  .msg.err { background: #7f1d1d; color: #fecaca; }
+  .msg.info { background: #1e3a8a; color: #bfdbfe; }
+  .footer { text-align: center; color: #64748b; font-size: 12px; margin-top: 30px; }
+  .select-all { margin-left: auto; font-size: 12px; color: #94a3b8; cursor: pointer; }
+  .select-all:hover { color: #e2e8f0; }
+  .crash-log {
+    background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+    padding: 12px; font-family: "Consolas", monospace; font-size: 12px;
+    max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+    color: #cbd5e1;
+  }
+  .card-header { display: flex; align-items: center; gap: 8px; }
+  .card-header h2 { margin-bottom: 0; }
+  .card-actions { margin-left: auto; display: flex; gap: 6px; }
+  .icon-btn {
+    background: #334155; border: none; color: #e2e8f0; cursor: pointer;
+    font-size: 12px; padding: 4px 10px; border-radius: 5px; transition: background .15s;
+  }
+  .icon-btn:hover { background: #475569; }
+  .icon-btn.danger:hover { background: #7f1d1d; }
+  .hint { font-size: 12px; color: #94a3b8; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🛡️ DSH 救砖管理台</h1>
+  <p class="subtitle" id="subtitle">安全模式已激活 — 当前仅运行官方核心插件。请选择性重新启用第三方插件，逐个排查崩溃原因。</p>
+
+  <!-- 崩溃日志 -->
+  <div class="card">
+    <div class="card-header">
+      <h2>📋 最近崩溃日志 <span class="badge crash" id="crash-badge">加载中</span></h2>
+      <div class="card-actions">
+        <button class="icon-btn" onclick="exportCrashLog()">导出</button>
+        <button class="icon-btn danger" onclick="clearCrashLog()">清除</button>
+      </div>
+    </div>
+    <div class="crash-log" id="crash-log">加载中...</div>
+  </div>
+
+  <!-- 第三方插件（可重新启用） -->
+  <div class="card">
+    <h2>
+      第三方插件
+      <span class="badge disabled" id="disabled-count">-</span>
+      <span class="select-all" onclick="toggleAll()">全选 / 全不选</span>
+    </h2>
+    <div id="plugin-list"></div>
+    <div class="actions">
+      <button class="btn-success" onclick="enableSelected()">启用插件</button>
+      <button class="btn-warning" onclick="disableSelected()">禁用插件</button>
+      <button class="btn-primary" onclick="applyChanges()">应用选中并重启 DSH</button>
+    </div>
+    <div id="msg" class="msg"></div>
+    <div class="hint">💡 点击 ⭐ 将插件加入白名单，下次崩溃时白名单插件会被保留。</div>
+  </div>
+
+  <div class="footer">DSH Rescue Module v1.1 · 修改前自动备份 package.json · 可逆操作</div>
+</div>
+
+<script>
+let state = null;
+// pendingStatus: pluginName -> 'enabled' | 'disabled'（前端待应用状态）
+let pendingStatus = new Map();
+
+async function loadState() {
+  try {
+    const r = await fetch('/api/state?_t=' + Date.now(), { cache: 'no-store' });
+    state = await r.json();
+    // 初始化待应用状态
+    pendingStatus = new Map();
+    state.enabledThirdParty.forEach(b => pendingStatus.set(b, 'enabled'));
+    state.disabled.forEach(b => pendingStatus.set(b, 'disabled'));
+    render();
+  } catch (e) {
+    showMsg('无法连接服务器: ' + e.message, 'err');
+  }
+}
+
+async function loadCrashLog() {
+  try {
+    const r = await fetch('/api/crash-log?_t=' + Date.now(), { cache: 'no-store' });
+    const d = await r.json();
+    document.getElementById('crash-log').textContent = d.log || '暂无崩溃日志';
+    document.getElementById('crash-badge').textContent = d.log && d.log !== '暂无崩溃日志' ? '有记录' : '无记录';
+  } catch (e) {
+    document.getElementById('crash-log').textContent = '加载失败: ' + e.message;
+  }
+}
+
+function exportCrashLog() {
+  const text = document.getElementById('crash-log').textContent;
+  if (!text || text === '暂无崩溃日志' || text.startsWith('加载')) {
+    showMsg('没有可导出的崩溃日志', 'info');
+    return;
+  }
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'dsh-crash-log-' + new Date().toISOString().replace(/[:.]/g, '-') + '.log';
+  a.click();
+  URL.revokeObjectURL(url);
+  showMsg('崩溃日志已导出', 'ok');
+}
+
+async function clearCrashLog() {
+  if (!confirm('确定清除所有崩溃日志吗？')) return;
+  try {
+    const r = await fetch('/api/crash-log', { method: 'DELETE' });
+    const d = await r.json();
+    showMsg(d.message, d.ok ? 'ok' : 'err');
+    if (d.ok) {
+      document.getElementById('crash-log').textContent = '暂无崩溃日志';
+      document.getElementById('crash-badge').textContent = '无记录';
+    }
+  } catch (e) {
+    showMsg('清除失败: ' + e.message, 'err');
+  }
+}
+
+function getAllPlugins() {
+  // 合并所有第三方插件，去重，保持顺序：已启用在前，已禁用在后
+  const seen = new Set();
+  const all = [];
+  state.enabledThirdParty.forEach(b => { if (!seen.has(b)) { seen.add(b); all.push(b); } });
+  state.disabled.forEach(b => { if (!seen.has(b)) { seen.add(b); all.push(b); } });
+  return all;
+}
+
+function render() {
+  const list = document.getElementById('plugin-list');
+  const all = getAllPlugins();
+  const disabledCount = all.filter(b => pendingStatus.get(b) === 'disabled').length;
+  document.getElementById('disabled-count').textContent = disabledCount;
+
+  if (all.length === 0) {
+    list.innerHTML = '<div style="color:#94a3b8;font-size:13px;padding:8px;">没有第三方插件</div>';
+    return;
+  }
+
+  list.innerHTML = all.map((b, i) => {
+    const wl = state.whitelist.includes(b);
+    const status = pendingStatus.get(b) || 'disabled';
+    const statusBadge = status === 'enabled'
+      ? '<span class="badge enabled">运行中</span>'
+      : '<span class="badge disabled">已禁用</span>';
+    return `<div class="plugin-row" data-plugin="${b}">
+      <span class="plugin-name">${b}</span>
+      ${statusBadge}
+      ${wl ? '<span class="badge whitelist">白名单</span>' : ''}
+      <button class="star-btn ${wl ? 'active' : ''}" onclick="toggleWhitelist('${b}', ${wl})" title="${wl ? '移出白名单' : '加入白名单'}">★</button>
+      <input type="checkbox" class="select-cb" value="${b}">
+    </div>`;
+  }).join('');
+}
+
+function toggleAll() {
+  const boxes = document.querySelectorAll('#plugin-list .select-cb');
+  const allChecked = [...boxes].every(b => b.checked);
+  boxes.forEach(b => b.checked = !allChecked);
+}
+
+function getSelected() {
+  return [...document.querySelectorAll('#plugin-list .select-cb:checked')].map(b => b.value);
+}
+
+function showMsg(text, type) {
+  const m = document.getElementById('msg');
+  m.textContent = text;
+  m.className = 'msg show ' + type;
+  setTimeout(() => m.classList.remove('show'), 8000);
+}
+
+/** 仅更新单行的状态徽章，不重绘整表（保留复选框勾选状态） */
+function updateRowStatus(plugin, status) {
+  const row = document.querySelector(`.plugin-row[data-plugin="${CSS.escape(plugin)}"]`);
+  if (!row) return;
+  const badge = row.querySelector('.badge.enabled, .badge.disabled');
+  if (badge) {
+    badge.className = 'badge ' + (status === 'enabled' ? 'enabled' : 'disabled');
+    badge.textContent = status === 'enabled' ? '运行中' : '已禁用';
+  }
+}
+
+async function toggleWhitelist(name, currentlyActive) {
+  const action = currentlyActive ? 'remove' : 'add';
+  try {
+    const r = await fetch('/api/whitelist', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name, action })
+    });
+    const d = await r.json();
+    showMsg(d.message, d.ok ? 'ok' : 'err');
+    if (d.ok) {
+      // 只更新星标和白名单徽章，不重绘整表
+      if (d.whitelist) state.whitelist = d.whitelist;
+      const row = document.querySelector(`.plugin-row[data-plugin="${CSS.escape(name)}"]`);
+      if (row) {
+        const star = row.querySelector('.star-btn');
+        const wlBadge = row.querySelector('.badge.whitelist');
+        const isWl = d.whitelist.includes(name);
+        if (star) { star.className = 'star-btn ' + (isWl ? 'active' : ''); star.title = isWl ? '移出白名单' : '加入白名单'; star.setAttribute('onclick', `toggleWhitelist('${name}', ${isWl})`); }
+        if (isWl && !wlBadge) {
+          star.insertAdjacentHTML('beforebegin', '<span class="badge whitelist">白名单</span>');
+        } else if (!isWl && wlBadge) {
+          wlBadge.remove();
+        }
+      }
+    }
+  } catch (e) { showMsg('请求失败: ' + e.message, 'err'); }
+}
+
+/** 启用选中的插件：勾选的插件状态改为 enabled */
+function enableSelected() {
+  const sel = getSelected();
+  if (sel.length === 0) { showMsg('请先勾选要启用的插件', 'info'); return; }
+  sel.forEach(b => {
+    pendingStatus.set(b, 'enabled');
+    updateRowStatus(b, 'enabled');
+  });
+  showMsg(`已标记 ${sel.length} 个插件为启用，点击"应用选中并重启 DSH"生效`, 'ok');
+}
+
+/** 禁用选中的插件：勾选的插件状态改为 disabled */
+function disableSelected() {
+  const sel = getSelected();
+  if (sel.length === 0) { showMsg('请先勾选要禁用的插件', 'info'); return; }
+  sel.forEach(b => {
+    pendingStatus.set(b, 'disabled');
+    updateRowStatus(b, 'disabled');
+  });
+  showMsg(`已标记 ${sel.length} 个插件为禁用，点击"应用选中并重启 DSH"生效`, 'ok');
+}
+
+/** 应用更改：将所有 enabled 状态的插件写入并重启 */
+async function applyChanges() {
+  const toEnable = getAllPlugins().filter(b => pendingStatus.get(b) === 'enabled');
+  showMsg(`正在应用更改（启用 ${toEnable.length} 个插件）并重启 DSH...`, 'info');
+  try {
+    const r = await fetch('/api/apply', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ enable: toEnable }) });
+    const d = await r.json();
+    showMsg(d.message, d.ok ? 'ok' : 'err');
+    setTimeout(loadState, 5000);
+  } catch (e) { showMsg('请求失败: ' + e.message, 'err'); }
+}
+
+loadState();
+loadCrashLog();
+</script>
+</body>
+</html>

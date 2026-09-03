@@ -1,0 +1,7 @@
+# runtime data
+/data/
+
+# build artifacts
+node_modules/
+*.tgz
+*.log

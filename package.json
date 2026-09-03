@@ -1,0 +1,40 @@
+{
+  "name": "dsh-rescue-bootloader",
+  "version": "1.1.1",
+  "description": "DSH 救砖模块 — 崩溃检测、安全模式、救砖管理台一体化插件。类似 Windows 安全模式 / Magisk 救砖。",
+  "type": "module",
+  "main": "lib/index.js",
+  "scripts": {
+    "postinstall": "node scripts/setup.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "scripts",
+    "cordis.patch.yml",
+    "dsh-rescue.ps1",
+    "rescue-server.mjs",
+    "rescue-ui.html",
+    "install.ps1",
+    "uninstall.ps1",
+    "LICENSE",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "rescue",
+    "safe-mode",
+    "bootloader",
+    "recovery"
+  ],
+  "license": "MIT"
+}

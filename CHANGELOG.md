@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (一条命令安装/卸载)
+## 1.1.1 (一条命令安装/卸载)
 - **去除 postinstall 等全部构建脚本**：安装只需 `dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader`，不再需要 `allowBuilds` 手工授权。
 - 拦截配置迁入插件生命周期：加载时**自动安装**、卸载/退出时**自动还原** dsh 包装脚本（幂等、写前备份 `.dsh-rescue-bak`、损坏自愈）。
 - 拦截同时覆盖 `dsh web` 与 `dsh --profile web`。

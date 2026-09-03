@@ -380,7 +380,7 @@ def main():
     BACKUP = PROFILE_DIR / 'package.json.rescue-backup'
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    log('DSH Rescue Bootloader v1.2 (Python)')
+    log('DSH Rescue Bootloader v1.1.1 (Python)')
     log(f'Profile: {PROFILE_DIR}')
     log(f'DSH 版本: {get_dsh_version()}')
 

@@ -3,7 +3,7 @@
 > DSH 救砖模块 — 崩溃检测、两级安全模式、救砖管理台一体化插件。类似 Windows 安全模式 / Magisk 救砖。
 > 纯 Python 实现（零三方依赖）：当 DSH 因插件崩溃无法启动时自动进入安全模式，经救砖管理台选择性恢复插件。
 
-**v1.2.0 (Python 版)** · MIT · 面向 Windows（拦截依赖 `dsh.cmd` / `dsh.ps1`）
+**v1.1.1 (Python 版)** · MIT · 面向 Windows（拦截依赖 `dsh.cmd` / `dsh.ps1`）
 
 ---
 
@@ -42,7 +42,7 @@
 dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader
 ```
 
-从 v1.2 起插件**不再包含任何构建脚本**（无 postinstall），因此**无需 pnpm 的 `allowBuilds` 授权**。
+从 v1.1.1 起插件**不再包含任何构建脚本**（无 postinstall），因此**无需 pnpm 的 `allowBuilds` 授权**。
 插件加载时会自动：
 
 1. 在全局 dsh 包装脚本（`dsh.cmd` / `dsh.ps1` / `dsh`）中装入崩溃检测拦截——此后 `dsh web` 与 `dsh --profile web` 都经 `dsh_rescue.py` 守护；

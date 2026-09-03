@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 (一条命令安装/卸载)
+- **去除 postinstall 等全部构建脚本**：安装只需 `dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader`，不再需要 `allowBuilds` 手工授权。
+- 拦截配置迁入插件生命周期：加载时**自动安装**、卸载/退出时**自动还原** dsh 包装脚本（幂等、写前备份 `.dsh-rescue-bak`、损坏自愈）。
+- 拦截同时覆盖 `dsh web` 与 `dsh --profile web`。
+- DSH 以 `DETACHED_PROCESS` 启动（关终端不再带走 DSH）；新增 `--daemon` 全程后台守护监控。
+- 自动探测 `python/python3/py` 并缓存全路径（`data/python.path`），运行不依赖 PATH。
+- 自动生成独立还原脚本 `~/.dsh/dsh-rescue-uninstall.py`（离线兜底）。
+- 修复历史损坏：`dsh.cmd` 的 `:rundsh` 标签丢失/粘连导致的静默失效。
+
 ## 1.1.0 (Python rewrite)
 - 救砖模块整体改用**纯 Python**（去掉 PowerShell）。
 - 启动器 `dsh_rescue.py`：崩溃检测 + 两级安全模式 + DSH 版本检测。

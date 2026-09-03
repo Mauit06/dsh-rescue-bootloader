@@ -1,14 +1,11 @@
 {
   "name": "dsh-rescue-bootloader",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "DSH 救砖模块 — 崩溃检测、两级安全模式、救砖管理台一体化插件。类似 Windows 安全模式 / Magisk 救砖。",
   "type": "module",
   "main": "lib/index.js",
   "engines": {
     "node": ">=20.11.0"
-  },
-  "scripts": {
-    "postinstall": "python scripts/setup.py"
   },
   "dsh": {
     "bundle": {
@@ -24,7 +21,6 @@
     "!**/__pycache__",
     "!**/*.pyc",
     "lib",
-    "scripts",
     "cordis.patch.yml",
     "dsh_rescue.py",
     "rescue_server.py",

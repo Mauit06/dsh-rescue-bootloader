@@ -3,7 +3,7 @@
 > DSH 救砖模块 — 崩溃检测、两级安全模式、救砖管理台一体化插件。类似 Windows 安全模式 / Magisk 救砖。
 > 纯 Python 实现（零三方依赖）：当 DSH 因插件崩溃无法启动时自动进入安全模式，经救砖管理台选择性恢复插件。
 
-**v1.0.1 (Python 版)** · MIT · 面向 Windows（拦截依赖 `dsh.cmd` / `dsh.ps1`）
+**v1.2.0 (Python 版)** · MIT · 面向 Windows（拦截依赖 `dsh.cmd` / `dsh.ps1`）
 
 ---
 
@@ -36,51 +36,21 @@
 4. 若安全模式下仍崩溃 → 第 2 次升级为仅保留官方（连白名单也禁用）
 5. 在管理台中逐个重新启用插件 → 应用并重启；成功后自动复位崩溃计数
 
-## 安装
-
-### 方式一：官方插件命令（推荐）
+## 安装（一条命令）
 
 ```powershell
 dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader
 ```
 
-> 该插件带 `postinstall`（`python scripts/setup.py`）构建脚本，pnpm 10+ 首次安装会默认阻止，需授权。
-> **必须在 profile 的 `pnpm-workspace.yaml` 中授权**（新版 pnpm 已不再读取 `package.json` 里的 `pnpm` 字段）：
->
-> ```yaml
-> allowBuilds:
->   dsh-rescue-bootloader: true
-> ```
->
-> 授权后重新运行：
-> ```powershell
-> dsh plugin --profile web install
-> ```
+从 v1.2 起插件**不再包含任何构建脚本**（无 postinstall），因此**无需 pnpm 的 `allowBuilds` 授权**。
+插件加载时会自动：
 
-安装完成后运行：
+1. 在全局 dsh 包装脚本（`dsh.cmd` / `dsh.ps1` / `dsh`）中装入崩溃检测拦截——此后 `dsh web` 与 `dsh --profile web` 都经 `dsh_rescue.py` 守护；
+2. 拉起救砖管理台 `http://127.0.0.1:8105`。
 
-```powershell
-dsh web
-```
+装完后**重启一次 DSH**（或新开终端跑 `dsh web`）即自动生效，之后无需任何手动配置。
 
-### 方式二：Release 包（无需授权）
-
-1. 下载 [Releases](https://github.com/Mauit06/dsh-rescue-bootloader/releases) 的 `dsh-rescue-bootloader-1.0.1.tgz`
-2. 本地 tarball 安装（`postinstall` 默认直接运行）
-
-```powershell
-dsh plugin --profile web add file:./dsh-rescue-bootloader-1.0.1.tgz
-```
-
-### 方式三：手动安装（解压）
-
-1. 下载并解压 ZIP / tarball
-2. 在解压目录运行：
-   ```powershell
-   python install.py
-   ```
-3. 运行 `dsh web`
-
+> 备用（离线/手动）：下载 [Releases](https://github.com/Mauit06/dsh-rescue-bootloader/releases) 的 .tgz / ZIP 解压后运行 `python install.py`。
 ## 使用
 
 | 命令 / 操作 | 说明 |
@@ -101,38 +71,31 @@ dsh plugin --profile web add file:./dsh-rescue-bootloader-1.0.1.tgz
 
 - **Python 版**：启动器/管理台/安装脚本均为 Python（纯标准库，跨平台逻辑）；拦截依赖 `dsh.cmd`/`dsh.ps1`（Windows）/ `dsh` shell 包装（非 Windows）。
 - **拦截 `dsh web` 与 `dsh --profile web`**：两者都会进入崩溃检测（不再绕过）。
-- **Python 已内嵌**：安装时把所用 Python 全路径写入 `data/python.path`，启动器用全路径调用，不依赖 `python` 在 PATH；仅需安装时能运行 `python`（只用 `py` 时把 `package.json` 的 `postinstall` 改成 `py -3 scripts/setup.py`）。
+- **自动安装/还原**：拦截块的写入与还原全部由插件自身完成（幂等、写前自动备份 `*.dsh-rescue-bak`、损坏可自愈）；Python 全路径缓存于 `data/python.path`，运行不依赖 PATH（加载时自动探测 `python`/`python3`/`py -3`）。
 - **DSH 不随终端关闭而退出**：启动器用 `DETACHED_PROCESS` 启动 DSH；加 `--daemon` 则启动器本身也后台守护、全程监控崩溃。
 - **安全模式只保留 `@deepseek-ai/*`**：profile 中仅 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 两个核心会保留，其余第三方一律禁用；若元凶是这两个核心则无法禁用。
 - **“应用/重启”结束 DSH 进程**：通过 PID 文件精确清理，不误杀其它 node 应用。
 - **修改可逆**：进入安全模式前备份 `package.json` 到 `package.json.rescue-backup`，可用管理台“恢复全部插件”还原。
 
-## 卸载
-
-### 官方方式
+## 卸载（一条命令）
 
 ```powershell
 dsh plugin --profile web remove dsh-rescue-bootloader
 ```
 
-然后运行 `uninstall.py` 还原 `dsh.cmd` / `dsh.ps1`：
+插件被卸载（reload 或 DSH 退出）时，会**自动还原**全部 dsh 包装脚本；首次写入前已备份为同目录 `*.dsh-rescue-bak`。
+
+若插件目录曾被手动/离线删除，运行安装时自动放置的独立还原脚本：
 
 ```powershell
-cd "$env:USERPROFILE\.dsh\profiles\web\node_modules\dsh-rescue-bootloader"
-python uninstall.py
-```
-
-### 手动卸载
-
-```powershell
-python uninstall.py
+python "$env:USERPROFILE\.dsh\dsh-rescue-uninstall.py"
 ```
 
 ## 文件结构
 
 ```
 dsh-rescue-bootloader/
-├── package.json          # 插件元数据（postinstall: python scripts/setup.py）
+├── package.json          # 插件元数据（无构建脚本，拦截由插件自动安装）
 ├── cordis.patch.yml      # DSH bundle 补丁
 ├── lib/
 │   └── index.js          # 插件入口(JS) — 拉起 Python 救援服务器

@@ -94,7 +94,7 @@ dsh plugin --profile web add file:./dsh-rescue-bootloader-1.0.0.tgz
 - **仅拦截 `dsh web`**：如果改用 `dsh --profile web` 启动，则绕过本插件的崩溃检测。
 - **需在前台控制台启动**：崩溃检测通过“包装启动 + 前台等待”实现，`dsh web` 窗口关闭时 DSH 也会退出。
 - **安全模式只保留 `@deepseek-ai/*`**：若崩溃元凶本身是某个 `@deepseek-ai/*` 插件，安全模式不会禁用它（可能仍需手动移除）。
-- **“应用/重启”会结束所有 DSH 进程**：救砖管理台点“应用/重启”会杀掉命令行含 `bin.js`/DSh 的 node 进程（含当前 DSH 会话），随后重新启动。
+- **“应用/重启”会结束所有 DSH 进程**：救砖管理台点“应用/重启”会杀掉命令行含 `bin.js`/dsh 的 node 进程（含当前 DSH 会话），随后重新启动。
 - **修改可逆**：进入安全模式前会备份 `package.json` 到 `package.json.rescue-backup`，可随时用管理台“恢复全部插件”还原。
 
 ## 卸载

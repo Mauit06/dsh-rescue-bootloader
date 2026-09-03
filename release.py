@@ -80,14 +80,14 @@ def main():
         if args.skip_pack:
             print(f'ERROR: {tgz} 不存在且 --skip-pack'); sys.exit(1)
         log(f'npm pack -> {tgz}')
-        subprocess.run(['npm', 'pack'], check=True)
+        subprocess.run('npm pack', shell=True, check=True)
     else:
         log(f'复用已有 {tgz}')
 
     # 2) 推送
     if not args.skip_push:
         log('推送 main + tags ...')
-        subprocess.run(['git', 'push', '-f', f'https://{args.token}@github.com/{repo}.git', 'main', '--tags'], check=True)
+        subprocess.run(f'git push -f \"https://{args.token}@github.com/{repo}.git\" main --tags', shell=True, check=True)
         log('推送完成')
     else:
         log('跳过推送')

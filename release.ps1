@@ -58,7 +58,7 @@ $note = ''
 if (Test-Path $NoteFile) { $note = Get-Content $NoteFile -Raw -Encoding UTF8 }
 $payload = @{ tag_name=$ver; target_commitish='main'; name="dsh-rescue-bootloader $ver"; body=$note; draft=$false; prerelease=$false } | ConvertTo-Json -Depth 5
 try {
-  $rel = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/${Repo}/releases" -Headers $headers -ContentType 'application/json' -Body $payload
+  $rel = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/${Repo}/releases" -Headers $headers -ContentType 'application/json' -Body ([System.Text.Encoding]::UTF8.GetBytes($payload))
   Info "Release created: $($rel.html_url)"
 } catch {
   Write-Host "ERROR creating release: $($_.Exception.Message)" -ForegroundColor Red

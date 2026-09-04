@@ -22,10 +22,10 @@ def ok(cond, msg):
 
 def main():
     tmp = Path(tempfile.mkdtemp())
-    ORIG = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dshmarket', 'dsh-notifier', 'dsh-history', 'git-graph']
+    ORIG = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dshmarket', 'dsh-notifier', 'dsh-history', 'git-graph', 'dsh-rescue-bootloader']
     pkg = {'name': 'p',
            'dependencies': {'@deepseek-ai/dsh-web-app': '0.1.2-rc.1', 'dshmarket': '^1.0', 'dsh-notifier': '^0.9',
-                            'dsh-history': '^0.1', 'git-graph': '^0.3'},
+                            'dsh-history': '^0.1', 'git-graph': '^0.3', 'dsh-rescue-bootloader': '^1.0'},
            'dsh': {'profile': {'bundles': list(ORIG)}}}
     (tmp / 'package.json').write_text(json.dumps(pkg), encoding='utf-8')
     (tmp / 'whitelist.json').write_text(json.dumps(['dsh-notifier']), encoding='utf-8')
@@ -46,9 +46,9 @@ def main():
     ok('dsh-notifier' in cur1 and 'dshmarket' not in cur1, 'crash1: 官方+白名单保留')
     D.enter_safe_mode(2, True)
     cur2 = json.loads(D.PKG_JSON.read_text(encoding='utf-8'))['dsh']['profile']['bundles']
-    ok(all(b.startswith('@deepseek-ai/') for b in cur2), 'crash2: 仅剩官方(白名单也禁)')
+    ok(all(b.startswith('@deepseek-ai/') or b == 'dsh-rescue-bootloader' for b in cur2), 'crash2: 官方+救援自保(白名单也禁)')
     st = S.get_current_state()
-    missing = [b for b in ORIG if b not in st['disabled'] and b not in cur2]
+    missing = [b for b in ORIG if b not in st['disabled'] and b not in cur2 and b != 'dsh-rescue-bootloader']
     ok(not missing, 'crash2 后管理台列表完整: ' + str(st['disabled']))
     bk = json.loads(D.BACKUP.read_text(encoding='utf-8'))['dsh']['profile']['bundles']
     ok(set(bk) >= set(ORIG), '备份携带全集清单')

@@ -141,16 +141,25 @@ def launch_dsh() -> subprocess.Popen:
     log(f'启动 DSH: {bin_js} web')
     stdout = open(BOOT_LOG, 'wb')
     stderr = open(BOOT_LOG_ERR, 'wb')
-    creationflags = 0
+    # Windows：给 DSH 一个「自己的隐藏控制台」(CREATE_NEW_CONSOLE + SW_HIDE)。
+    # 之前用 DETACHED_PROCESS 使 DSH 无控制台 → 它每次 spawn 控制台子进程
+    # (pwsh/python 工具调用) 都要新建可见窗口 = WebUI 每操作闪 PowerShell 黑窗。
+    # 隐藏新控制台后：子进程继承隐藏控制台(不闪窗)，且关终端窗口不杀 DSH。
     if os.name == 'nt':
-        creationflags = (getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
-                         | getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-                         | 0x00000008)  # DETACHED_PROCESS
-    proc = subprocess.Popen(
-        [get_node(), str(bin_js), 'web'],
-        cwd=str(PROFILE_DIR), stdout=stdout, stderr=stderr,
-        creationflags=creationflags,
-    )
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        si.wShowWindow = 0  # SW_HIDE
+        proc = subprocess.Popen(
+            [get_node(), str(bin_js), 'web'],
+            cwd=str(PROFILE_DIR), stdout=stdout, stderr=stderr,
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+            startupinfo=si,
+        )
+    else:
+        proc = subprocess.Popen(
+            [get_node(), str(bin_js), 'web'],
+            cwd=str(PROFILE_DIR), stdout=stdout, stderr=stderr,
+        )
     PID_FILE.write_text(str(proc.pid), encoding='utf-8')
     return proc
 
@@ -238,6 +247,9 @@ def enter_safe_mode(level: int, increment_crash: bool) -> None:
     else:
         keep = official_cur + [w for w in whitelist if w in cur_set and not is_official(w)]
         whitelist_kept = [w for w in whitelist if w in cur_set and not is_official(w)]
+    # 救砖插件自身永不被裁剪（否则升级安全模式后救援链自断，无法自愈还原 bundles）
+    if 'dsh-rescue-bootloader' in cur_set and 'dsh-rescue-bootloader' not in keep:
+        keep.append('dsh-rescue-bootloader')
     disabled = [b for b in all_bundles if b not in keep]
 
     prof['bundles'] = keep
@@ -402,7 +414,7 @@ def main():
     BACKUP = PROFILE_DIR / 'package.json.rescue-backup'
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    log('DSH Rescue Bootloader v1.1.3 (Python)')
+    log('DSH Rescue Bootloader v1.1.4 (Python)')
     log(f'Profile: {PROFILE_DIR}')
     log(f'DSH 版本: {get_dsh_version()}')
 

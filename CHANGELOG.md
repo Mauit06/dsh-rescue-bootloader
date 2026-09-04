@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.4 (pwsh 闪窗根修 + 救援自保 + 装机恢复)
+- **修复**：PowerShell 黑窗仍闪的根因——v1.1.3 用 DETACHED_PROCESS 让 DSH 脱离控制台，导致 DSH 每次 spawn 控制台子进程（工具调用的 pwsh/python）都新分配可见窗口。改为 `CREATE_NEW_CONSOLE + SW_HIDE`「自带隐藏控制台」：子进程继承隐藏控制台不再闪窗，且关终端仍不杀 DSH。
+- **加固**：两级安全模式任何级别都不再裁剪 `dsh-rescue-bootloader` 自身（修复升级安全模式后救援链自断、无法自愈还原的问题）。
 ## 1.1.3 (WebUI 闪窗修复)
 - **修复(根因)**：拦截触发从宽匹配改为**严格位置判定**——仅 `dsh web` / `dsh --profile web` 进入救援；`dsh plugin --profile web …`（WebUI/工具链高频形态）不再被劫持拉起救援链导致 cmd/pwsh 黑窗闪现。cmd/ps1/sh 三套拦截同规则，装机旧补丁自动幂等升级。
 - **修复**：全部子进程 spawn 静默化——Node `windowsHide`、Python `CREATE_NO_WINDOW`（含 taskkill/管理台拉起/守护重载），消除黑窗闪烁。

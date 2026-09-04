@@ -342,30 +342,41 @@ def do_normal_boot():
         log(f'救砖管理台: http://127.0.0.1:{DEFAULT_RESCUE_PORT}')
         proc.wait()
     else:
-        log(f'DSH 启动失败: {result["reason"]}')
-        save_crash_log(result['reason'])
-        if proc.poll() is None:
-            kill_dsh(proc)
-        time.sleep(2)
-        enter_safe_mode_for_crash()
-        start_rescue_server()
-        proc = launch_dsh()
-        r2 = wait_for_startup(proc, ARGS.timeout)
-        if r2['ok']:
-            log('安全模式启动成功（官方+白名单）')
-        else:
-            log('安全模式启动失败，升级到仅官方...')
-            kill_dsh(proc)
+        reason = result['reason']
+        crashed = ('进程退出' in reason) or (proc.poll() is not None)
+        if crashed:
+            log(f'DSH 启动失败: {reason}')
+            save_crash_log(reason)
+            if proc.poll() is None:
+                kill_dsh(proc)
             time.sleep(2)
-            enter_safe_mode(2, increment_crash=True)
+            enter_safe_mode_for_crash()
             start_rescue_server()
             proc = launch_dsh()
-            r3 = wait_for_startup(proc, ARGS.timeout)
-            if r3['ok']:
-                log('严格安全模式启动成功（仅官方）')
+            r2 = wait_for_startup(proc, ARGS.timeout)
+            if r2['ok']:
+                log('安全模式启动成功（官方+白名单）')
             else:
-                log('严格安全模式也失败，核心可能损坏')
-        proc.wait()
+                log('安全模式启动失败，升级到仅官方...')
+                kill_dsh(proc)
+                time.sleep(2)
+                enter_safe_mode(2, increment_crash=True)
+                start_rescue_server()
+                proc = launch_dsh()
+                r3 = wait_for_startup(proc, ARGS.timeout)
+                if r3['ok']:
+                    log('严格安全模式启动成功（仅官方）')
+                else:
+                    log('严格安全模式也失败，核心可能损坏')
+            proc.wait()
+        else:
+            log(f'启动检测超时（{reason}），但 DSH 进程仍存活——判定为慢启动而非崩溃，不进入安全模式')
+            log('保留全部插件，继续监听 DSH（可 Ctrl+C 或用救砖台干预）')
+            start_rescue_server()
+            try:
+                proc.wait()
+            except Exception:
+                pass
 
 
 def do_safe_boot():
@@ -399,7 +410,7 @@ def main():
     global ARGS, PROFILE_DIR, DEFAULT_DSH_PORT, DEFAULT_RESCUE_PORT, PKG_JSON, BACKUP
     p = argparse.ArgumentParser(description='DSH 救砖启动器 (Python)')
     p.add_argument('--safe', action='store_true', help='强制进入安全模式')
-    p.add_argument('--timeout', type=int, default=60, help='启动检测超时(秒)')
+    p.add_argument('--timeout', type=int, default=300, help='启动检测超时(秒)')
     p.add_argument('--dsh-port', type=int, default=DEFAULT_DSH_PORT, help='DSH 端口')
     p.add_argument('--rescue-port', type=int, default=DEFAULT_RESCUE_PORT, help='救砖管理台端口')
     p.add_argument('--daemon', action='store_true', help='守护模式：启动器也脱离控制台，全程后台运行')

@@ -94,35 +94,42 @@ def get_dsh_version() -> str:
     return 'unknown'
 
 
-def get_current_state() -> dict:
-    all_bundles = []
-    official = []
-    disabled = []
-    safe_mode = False
-    crash_count = 0
-    stored_version = ''
+def _dedupe(xs):
+    seen = set()
+    out = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
 
-    st = read_json(STATE_FILE)
-    if st:
-        all_bundles = st.get('allBundles', [])
-        official = st.get('official', [])
-        disabled = st.get('disabled', [])
-        safe_mode = bool(st.get('safeMode'))
-        crash_count = int(st.get('crashCount') or 0)
-        stored_version = st.get('dshVersion') or ''
+
+def bundle_universe(current_bundles=None, state=None):
+    """插件全集：当前 bundles ∪ state.allBundles ∪ 备份 bundles ∪ 白名单 ∪ 第三方依赖。
+    即使旧版本逻辑把 state/backup 写坏（二次升级后列表丢失），依赖表仍能让清单复原。"""
+    pkg = read_json(PKG_JSON) or {}
+    if current_bundles is None:
+        current_bundles = ((pkg.get('dsh') or {}).get('profile') or {}).get('bundles', []) or []
+    st = state if state is not None else (read_json(STATE_FILE) or {})
+    backup = read_json(BACKUP) or {}
+    backup_bundles = ((backup.get('dsh') or {}).get('profile') or {}).get('bundles', []) or []
+    deps = [k for k in (pkg.get('dependencies') or {}).keys() if not is_official(k)]
+    return _dedupe(list(current_bundles) + list(st.get('allBundles') or [])
+                   + list(backup_bundles) + list(get_whitelist()) + deps)
+
+
+def get_current_state() -> dict:
+    st = read_json(STATE_FILE) or {}
+    safe_mode = bool(st.get('safeMode'))
+    crash_count = int(st.get('crashCount') or 0)
+    stored_version = st.get('dshVersion') or ''
 
     whitelist = get_whitelist()
-    current_bundles = []
-    try:
-        pkg = read_json(PKG_JSON)
-        current_bundles = (pkg or {}).get('dsh', {}).get('profile', {}).get('bundles', [])
-    except Exception:
-        pass
+    pkg = read_json(PKG_JSON) or {}
+    current_bundles = ((pkg.get('dsh') or {}).get('profile') or {}).get('bundles', []) or []
 
-    if not all_bundles and current_bundles:
-        all_bundles = current_bundles
-        official = [b for b in current_bundles if is_official(b)]
-
+    all_bundles = bundle_universe(current_bundles, st)
+    official = [b for b in all_bundles if is_official(b)]
     enabled_third_party = [b for b in current_bundles if not is_official(b)]
     current_disabled = [b for b in all_bundles if b not in current_bundles]
 
@@ -244,6 +251,12 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if BACKUP.exists():
                     PKG_JSON.write_bytes(BACKUP.read_bytes())
+                else:
+                    pkg = read_json(PKG_JSON)
+                    if not isinstance(pkg, dict):
+                        raise RuntimeError('package.json 不可读')
+                    pkg.setdefault('dsh', {}).setdefault('profile', {})['bundles'] = bundle_universe()
+                    write_json(PKG_JSON, pkg)
                 CRASH_FLAG.unlink(missing_ok=True)
                 if STATE_FILE.exists():
                     STATE_FILE.unlink()

@@ -1,22 +1,20 @@
-## dsh-rescue-bootloader v1.1.1
+## dsh-rescue-bootloader v1.1.2
 
-DSH 救砖模块 —— 纯 Python、**一条命令安装/卸载**。
+纯 Python 救砖模块。本版本聚焦救砖管理台的可用性与正确性。
 
-### 这个版本解决什么
-- 安装不再需要任何手工步骤：移除 postinstall/构建脚本，`allowBuilds` 授权正式成为历史。
-- 卸载也只需一条 `dsh plugin remove`：拦截块由插件自动安装、自动还原（幂等、写前备份、损坏自愈）。
-- `dsh web` 与 `dsh --profile web` 都会被拦截。
-- DSH 不再随终端关闭退出（DETACHED_PROCESS），可选 `--daemon` 全程后台守护。
-- 自动探测 Python 并缓存全路径，运行不依赖 PATH。
-- 修复旧版 `dsh.cmd` 拦截损坏（`:rundsh` 标签丢失/粘连导致的静默失效）。
+### 修复
+- 第二次崩溃（升级禁用白名单）后，管理台不再丢失第三方插件列表：插件全集按 `当前 ∪ state ∪ 备份 ∪ 白名单 ∪ 依赖表` 合并计算；`rescue-backup` 始终携带全集清单，不会被二次崩溃覆盖缩水。
 
-### 安装
+### 新增
+- 救砖管理台 **“🚪 退出安全模式（恢复全部）”** 按钮：一键恢复崩溃前记录的全部插件并重启 DSH；备份缺失时按全集自动重建。
+
+### 调整
+- 启动/安全模式重启的检测超时统一延长至 **60 秒**（`--timeout` 可覆盖）。
+
+### 安装 / 卸载（各一条命令）
 ```powershell
 dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader
-```
-重启一次 DSH 即自动完成拦截配置。卸载：
-```powershell
 dsh plugin --profile web remove dsh-rescue-bootloader
 ```
 
-**Release asset:** `dsh-rescue-bootloader-1.1.1.tgz`（备用：解压后 `python install.py`）。
+**Release asset:** `dsh-rescue-bootloader-1.1.2.tgz`（备用：解压后 `python install.py`）。

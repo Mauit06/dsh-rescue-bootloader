@@ -110,12 +110,13 @@
       <button class="btn-success" onclick="enableSelected()">启用插件</button>
       <button class="btn-warning" onclick="disableSelected()">禁用插件</button>
       <button class="btn-primary" onclick="applyChanges()">应用选中并重启 DSH</button>
+      <button class="btn-secondary" onclick="exitSafe()" title="恢复崩溃前记录的插件全集并重启 DSH">🚪 退出安全模式（恢复全部）</button>
     </div>
     <div id="msg" class="msg"></div>
     <div class="hint">💡 点击 ⭐ 将插件加入白名单，下次崩溃时白名单插件会被保留。</div>
   </div>
 
-  <div class="footer">DSH Rescue Module v1.1 · 修改前自动备份 package.json · 可逆操作</div>
+  <div class="footer">DSH Rescue Module v1.1.2 · 修改前自动备份 package.json · 可逆操作</div>
 </div>
 
 <script>
@@ -316,6 +317,18 @@ async function applyChanges() {
     const d = await r.json();
     showMsg(d.message, d.ok ? 'ok' : 'err');
     setTimeout(loadState, 5000);
+  } catch (e) { showMsg('请求失败: ' + e.message, 'err'); }
+}
+
+/** 退出安全模式：恢复备份中的插件全集并重启（备份缺失时按 当前∪state∪备份∪白名单∪依赖 自动重建） */
+async function exitSafe() {
+  if (!confirm('退出安全模式 = 恢复崩溃前的全部插件并重启 DSH。\n\n若你之前正是为排查问题而禁用了部分插件，请改用“应用选中并重启”。确定继续？')) return;
+  showMsg('正在恢复全部插件并重启 DSH...', 'info');
+  try {
+    const r = await fetch('/api/restore', { method: 'POST' });
+    const d = await r.json();
+    showMsg(d.message, d.ok ? 'ok' : 'err');
+    setTimeout(loadState, 6000);
   } catch (e) { showMsg('请求失败: ' + e.message, 'err'); }
 }
 

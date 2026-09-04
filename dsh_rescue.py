@@ -192,18 +192,37 @@ def save_crash_log(reason: str) -> None:
 
 def enter_safe_mode(level: int, increment_crash: bool) -> None:
     log(f'========== 进入安全模式 (level {level}) ==========')
-    if PKG_JSON.exists():
-        BACKUP.write_bytes(PKG_JSON.read_bytes())
-        log('已备份 package.json -> package.json.rescue-backup')
     pkg = read_json(PKG_JSON)
     if pkg is None:
         log('ERROR: 无法读取 profile package.json')
         return
     dsh = pkg.setdefault('dsh', {})
     prof = dsh.setdefault('profile', {})
-    bundles = prof.get('bundles', [])
-    official = [b for b in bundles if is_official(b)]
+    bundles = list(prof.get('bundles', []))
+
+    # 插件全集 = 当前 bundles ∪ 上次 state ∪ 上次备份（二次升级后列表不再丢失）
+    prev = read_json(STATE_FILE) or {}
+    prev_all = prev.get('allBundles') or []
+    prev_backup = read_json(BACKUP)
+    backup_bundles = (((prev_backup or {}).get('dsh') or {}).get('profile') or {}).get('bundles') or []
+    seen = set()
+    all_bundles = []
+    for b in bundles + list(prev_all) + list(backup_bundles):
+        if b not in seen:
+            seen.add(b)
+            all_bundles.append(b)
+
+    # 备份永远携带全集清单：二次崩溃不会覆盖掉原始插件列表
+    pkg_backup = json.loads(json.dumps(pkg))
+    pb_prof = pkg_backup.setdefault('dsh', {}).setdefault('profile', {})
+    pb_prof['bundles'] = all_bundles
+    write_json(BACKUP, pkg_backup)
+    log('已备份 package.json -> rescue-backup（保留全部已知插件清单）')
+
+    official_cur = [b for b in bundles if is_official(b)]
+    official = [b for b in all_bundles if is_official(b)]
     whitelist = get_whitelist()
+    cur_set = set(bundles)
 
     st = get_state()
     crash_count = st['crashCount']
@@ -211,18 +230,18 @@ def enter_safe_mode(level: int, increment_crash: bool) -> None:
         crash_count += 1
 
     if level >= 2:
-        keep = official
+        keep = list(official_cur)
         whitelist_kept = []
     else:
-        keep = official + [w for w in whitelist if w not in official]
-        whitelist_kept = [w for w in whitelist if w not in official]
-    disabled = [b for b in bundles if b not in keep]
+        keep = official_cur + [w for w in whitelist if w in cur_set and not is_official(w)]
+        whitelist_kept = [w for w in whitelist if w in cur_set and not is_official(w)]
+    disabled = [b for b in all_bundles if b not in keep]
 
     prof['bundles'] = keep
     write_json(PKG_JSON, pkg)
 
     dsh_ver = get_dsh_version()
-    log(f'保留官方 ({len(official)}): {", ".join(official)}')
+    log(f'保留官方 ({len(official_cur)}): {", ".join(official_cur)}')
     if whitelist_kept:
         log(f'保留白名单 ({len(whitelist_kept)}): {", ".join(whitelist_kept)}')
     log(f'禁用 ({len(disabled)}): {", ".join(disabled)}')
@@ -232,7 +251,7 @@ def enter_safe_mode(level: int, increment_crash: bool) -> None:
         'safeMode': True,
         'crashCount': crash_count,
         'dshVersion': dsh_ver,
-        'allBundles': bundles,
+        'allBundles': all_bundles,
         'official': official,
         'whitelist': whitelist,
         'disabled': disabled,
@@ -285,7 +304,7 @@ def do_normal_boot():
             enter_safe_mode_for_crash()
             start_rescue_server()
             proc = launch_dsh()
-            r2 = wait_for_startup(proc, 20)
+            r2 = wait_for_startup(proc, ARGS.timeout)
             if not r2['ok']:
                 log('安全模式启动失败，升级到仅官方...')
                 kill_dsh(proc)
@@ -293,7 +312,7 @@ def do_normal_boot():
                 enter_safe_mode(2, increment_crash=True)
                 start_rescue_server()
                 proc = launch_dsh()
-                r3 = wait_for_startup(proc, 20)
+                r3 = wait_for_startup(proc, ARGS.timeout)
                 if r3['ok']:
                     log('严格安全模式启动成功（仅官方）')
                 else:
@@ -316,7 +335,7 @@ def do_normal_boot():
         enter_safe_mode_for_crash()
         start_rescue_server()
         proc = launch_dsh()
-        r2 = wait_for_startup(proc, 20)
+        r2 = wait_for_startup(proc, ARGS.timeout)
         if r2['ok']:
             log('安全模式启动成功（官方+白名单）')
         else:
@@ -326,7 +345,7 @@ def do_normal_boot():
             enter_safe_mode(2, increment_crash=True)
             start_rescue_server()
             proc = launch_dsh()
-            r3 = wait_for_startup(proc, 20)
+            r3 = wait_for_startup(proc, ARGS.timeout)
             if r3['ok']:
                 log('严格安全模式启动成功（仅官方）')
             else:
@@ -340,7 +359,7 @@ def do_safe_boot():
     enter_safe_mode(level, increment_crash=False)
     start_rescue_server()
     proc = launch_dsh()
-    r2 = wait_for_startup(proc, 20)
+    r2 = wait_for_startup(proc, ARGS.timeout)
     if r2['ok']:
         log('安全模式已启动（仅官方/白名单）')
     else:
@@ -350,7 +369,7 @@ def do_safe_boot():
         enter_safe_mode(2, increment_crash=True)
         start_rescue_server()
         proc = launch_dsh()
-        r3 = wait_for_startup(proc, 20)
+        r3 = wait_for_startup(proc, ARGS.timeout)
         if r3['ok']:
             log('严格安全模式启动成功（仅官方）')
         else:
@@ -365,7 +384,7 @@ def main():
     global ARGS, PROFILE_DIR, DEFAULT_DSH_PORT, DEFAULT_RESCUE_PORT, PKG_JSON, BACKUP
     p = argparse.ArgumentParser(description='DSH 救砖启动器 (Python)')
     p.add_argument('--safe', action='store_true', help='强制进入安全模式')
-    p.add_argument('--timeout', type=int, default=30, help='启动超时(秒)')
+    p.add_argument('--timeout', type=int, default=60, help='启动检测超时(秒)')
     p.add_argument('--dsh-port', type=int, default=DEFAULT_DSH_PORT, help='DSH 端口')
     p.add_argument('--rescue-port', type=int, default=DEFAULT_RESCUE_PORT, help='救砖管理台端口')
     p.add_argument('--daemon', action='store_true', help='守护模式：启动器也脱离控制台，全程后台运行')
@@ -380,7 +399,7 @@ def main():
     BACKUP = PROFILE_DIR / 'package.json.rescue-backup'
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    log('DSH Rescue Bootloader v1.1.1 (Python)')
+    log('DSH Rescue Bootloader v1.1.2 (Python)')
     log(f'Profile: {PROFILE_DIR}')
     log(f'DSH 版本: {get_dsh_version()}')
 

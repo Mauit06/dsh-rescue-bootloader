@@ -3,7 +3,7 @@
 > DSH 救砖模块 — 崩溃检测、两级安全模式、救砖管理台一体化插件。类似 Windows 安全模式 / Magisk 救砖。
 > 纯 Python 实现（零三方依赖）：当 DSH 因插件崩溃无法启动时自动进入安全模式，经救砖管理台选择性恢复插件。
 
-**v1.1.2 (Python 版)** · MIT · 面向 Windows（拦截依赖 `dsh.cmd` / `dsh.ps1`）
+**v1.1.3 (Python 版)** · MIT · 面向 Windows（拦截依赖 `dsh.cmd` / `dsh.ps1`）
 
 ---
 
@@ -71,7 +71,7 @@ dsh plugin --profile web add github:Mauit06/dsh-rescue-bootloader
 ## ⚠️ 注意事项 / 已知限制
 
 - **Python 版**：启动器/管理台/安装脚本均为 Python（纯标准库，跨平台逻辑）；拦截依赖 `dsh.cmd`/`dsh.ps1`（Windows）/ `dsh` shell 包装（非 Windows）。
-- **拦截 `dsh web` 与 `dsh --profile web`**：两者都会进入崩溃检测（不再绕过）。
+- **仅两种形态进入拦截**：`dsh web` 与 `dsh --profile web`；`dsh plugin --profile web …` 等子命令一律直通 DSH，不会被劫持（v1.1.3 修复 WebUI 操作闪窗的根因）。
 - **自动安装/还原**：拦截块的写入与还原全部由插件自身完成（幂等、写前自动备份 `*.dsh-rescue-bak`、损坏可自愈）；Python 全路径缓存于 `data/python.path`，运行不依赖 PATH（加载时自动探测 `python`/`python3`/`py -3`）。
 - **DSH 不随终端关闭而退出**：启动器用 `DETACHED_PROCESS` 启动 DSH；加 `--daemon` 则启动器本身也后台守护、全程监控崩溃。
 - **安全模式只保留 `@deepseek-ai/*`**：profile 中仅 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 两个核心会保留，其余第三方一律禁用；若元凶是这两个核心则无法禁用。

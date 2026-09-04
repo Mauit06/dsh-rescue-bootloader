@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.3 (WebUI 闪窗修复)
+- **修复(根因)**：拦截触发从宽匹配改为**严格位置判定**——仅 `dsh web` / `dsh --profile web` 进入救援；`dsh plugin --profile web …`（WebUI/工具链高频形态）不再被劫持拉起救援链导致 cmd/pwsh 黑窗闪现。cmd/ps1/sh 三套拦截同规则，装机旧补丁自动幂等升级。
+- **修复**：全部子进程 spawn 静默化——Node `windowsHide`、Python `CREATE_NO_WINDOW`（含 taskkill/管理台拉起/守护重载），消除黑窗闪烁。
+- **修复**：管理台单实例守卫——Windows 下 `SO_REUSEADDR` 允许多个 rescue_server 抢绑 8105，现第二实例检测到占用即退出（实机已清理 4 个端口互踩僵尸进程）。
+- **新增**：行为级回归入库——shim 四形态实跑断言（cmd.exe/powershell.exe）、JS↔Python 配对还原测试、安全模式状态仿真测试（tests/）。
 ## 1.1.2
 - **修复**：第二次崩溃（升级禁用白名单）后管理台第三方插件列表消失的问题——插件全集改为 `当前 ∪ state ∪ 备份 ∪ 白名单 ∪ 依赖表` 合并计算；`rescue-backup` 改为始终携带全集清单，不再被二次崩溃覆盖缩水。
 - **新增**：管理台 “🚪 退出安全模式（恢复全部）” 按钮（备份缺失时按全集自动重建 bundles）。

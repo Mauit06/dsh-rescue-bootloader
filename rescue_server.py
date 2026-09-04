@@ -14,6 +14,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+# Windows：子进程无控制台窗口
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8105
 PROFILE_DIR = Path(sys.argv[2]) if len(sys.argv) > 2 else Path.home() / '.dsh' / 'profiles' / 'web'
 RESCUE_DIR = Path(sys.argv[3]) if len(sys.argv) > 3 else Path.home() / '.dsh' / 'rescue'
@@ -151,7 +154,7 @@ def restart_dsh() -> None:
     if PID_FILE.exists():
         try:
             pid = int(PID_FILE.read_text(encoding='utf-8').strip())
-            subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
+            subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True, creationflags=NO_WINDOW)
         except Exception:
             pass
         try:
@@ -165,6 +168,7 @@ def restart_dsh() -> None:
             [sys.executable, str(LAUNCHER)],
             cwd=str(PLUGIN_DIR),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=NO_WINDOW,
         )
     except Exception:
         pass
@@ -287,9 +291,19 @@ class Handler(BaseHTTPRequestHandler):
         self._send({'ok': False, 'message': 'Not found'}, 404)
 
 
+class RescueHTTPServer(ThreadingHTTPServer):
+    # Windows 上 SO_REUSEADDR 允许重复绑定同一端口（多实例抢流）。
+    # 关闭它：第二个实例直接 bind 失败退出，保证管理台单实例。
+    allow_reuse_address = False
+
+
 def main():
     RESCUE_DIR.mkdir(parents=True, exist_ok=True)
-    server = ThreadingHTTPServer(('127.0.0.1', PORT), Handler)
+    try:
+        server = RescueHTTPServer(('127.0.0.1', PORT), Handler)
+    except OSError:
+        print(f'[rescue] 端口 {PORT} 已被另一实例占用，本实例退出', flush=True)
+        return
     print(f'[rescue] 管理台已启动: http://127.0.0.1:{PORT}', flush=True)
     try:
         server.serve_forever()

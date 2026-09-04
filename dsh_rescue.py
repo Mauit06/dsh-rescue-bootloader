@@ -19,6 +19,9 @@ import sys
 import time
 from pathlib import Path
 
+# Windows：子进程一律无控制台窗口（防闪窗）
+NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+
 # ---------- 路径 ----------
 PLUGIN_DIR = Path(__file__).resolve().parent
 DATA_DIR = PLUGIN_DIR / 'data'
@@ -158,7 +161,7 @@ def start_rescue_server() -> subprocess.Popen:
     return subprocess.Popen(
         [sys.executable, str(RESCUE_SERVER), str(DEFAULT_RESCUE_PORT), str(PROFILE_DIR), str(DATA_DIR)],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        cwd=str(PLUGIN_DIR),
+        cwd=str(PLUGIN_DIR), creationflags=NO_WINDOW,
     )
 
 
@@ -278,7 +281,7 @@ def kill_dsh(proc) -> None:
     if PID_FILE.exists():
         try:
             pid = int(PID_FILE.read_text(encoding='utf-8').strip())
-            subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
+            subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True, creationflags=NO_WINDOW)
         except Exception:
             pass
         PID_FILE.unlink(missing_ok=True)
@@ -399,7 +402,7 @@ def main():
     BACKUP = PROFILE_DIR / 'package.json.rescue-backup'
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    log('DSH Rescue Bootloader v1.1.2 (Python)')
+    log('DSH Rescue Bootloader v1.1.3 (Python)')
     log(f'Profile: {PROFILE_DIR}')
     log(f'DSH 版本: {get_dsh_version()}')
 
